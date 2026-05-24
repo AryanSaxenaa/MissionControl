@@ -1,0 +1,9 @@
+[mcp_servers.hydradb]
+command = "npx"
+args = ["-y", "@hydradb/mcp@latest"]
+env_vars = ["HYDRA_DB_API_KEY"]
+
+[mcp_servers.hydradb.env]
+HYDRA_DB_TENANT_ID = "mq66nfnt5t"
+HYDRA_DB_SUB_TENANT_ID = "missioncontrol"
+HYDRA_DB_LOG_LEVEL = "ERROR"

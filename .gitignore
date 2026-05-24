@@ -1,0 +1,51 @@
+# Environment variables (contains secrets)
+.env
+
+# IDE / editor configs that may contain secrets
+.vscode/
+opencode.json
+.idea/
+*.swp
+*.swo
+
+# Node
+node_modules/
+dist/
+build/
+.turbo/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.log.*
+*.err
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Package manager
+package-lock.json
+yarn.lock
+.pnpm-debug.log*
+.yarn-debug.log*
+.yarn-error.log*
+
+# Local env files
+.env.local
+.env.*.local
+
+# Misc
+*.pid
+*.seed
+*.pid.lock
