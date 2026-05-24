@@ -5,16 +5,26 @@ export function useWebSocket(serverUrl: string) {
   const store = useMissionControlStore()
   const wsRef = useRef<WebSocket | null>(null)
   const backoffRef = useRef(1000)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const urlRef = useRef(serverUrl)
+  urlRef.current = serverUrl
 
-  function buildWsUrl(url: string): string {
-    const u = new URL(url)
-    u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
-    u.pathname = '/ws'
-    return u.toString()
+  function buildWsUrl(url: string): string | null {
+    try {
+      const u = new URL(url)
+      u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
+      u.pathname = '/ws'
+      return u.toString()
+    } catch {
+      console.error('[WS] Invalid server URL:', url)
+      return null
+    }
   }
 
   function connect() {
-    const ws = new WebSocket(buildWsUrl(serverUrl))
+    const wsUrl = buildWsUrl(urlRef.current)
+    if (!wsUrl) return
+    const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
     ws.onopen = () => {
@@ -24,12 +34,8 @@ export function useWebSocket(serverUrl: string) {
 
     ws.onclose = () => {
       store.setWsConnected(false)
-      setTimeout(() => connect(), backoffRef.current)
+      timerRef.current = setTimeout(() => connect(), backoffRef.current)
       backoffRef.current = Math.min(backoffRef.current * 2, 30000)
-    }
-
-    ws.onerror = () => {
-      ws.close()
     }
 
     ws.onmessage = (event) => {
@@ -70,6 +76,7 @@ export function useWebSocket(serverUrl: string) {
     connect()
     return () => {
       wsRef.current?.close()
+      if (timerRef.current) clearTimeout(timerRef.current)
     }
   }, [serverUrl])
 }

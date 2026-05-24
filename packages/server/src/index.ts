@@ -1,3 +1,6 @@
+import { readFileSync, existsSync } from 'fs'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import { attachWebSocketServer } from './ws.js'
@@ -11,6 +14,20 @@ import intentRoutes from './routes/intents.js'
 import decisionRoutes from './routes/decisions.js'
 import failureRoutes from './routes/failures.js'
 import conflictRoutes from './routes/conflicts.js'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const envPath = resolve(__dirname, '../../../.env')
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eq = trimmed.indexOf('=')
+    if (eq === -1) continue
+    const key = trimmed.slice(0, eq).trim()
+    const val = trimmed.slice(eq + 1).trim()
+    if (!process.env[key]) process.env[key] = val
+  }
+}
 
 const PORT = parseInt(process.env.MC_SERVER_PORT || '3000')
 

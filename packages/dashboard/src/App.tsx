@@ -10,11 +10,17 @@ const SERVER_URL = import.meta.env.VITE_MC_SERVER_URL || 'http://localhost:3000'
 
 export default function App() {
   useWebSocket(SERVER_URL)
-  const store = useMissionControlStore()
+  const wsConnected = useMissionControlStore(s => s.wsConnected)
+  const agentsMap = useMissionControlStore(s => s.agents)
+  const activeConflicts = useMissionControlStore(s => s.activeConflicts)
+  const activeIntentsSize = useMissionControlStore(s => s.activeIntents.size)
+  const decisionsLength = useMissionControlStore(s => s.decisions.length)
+  const activeView = useMissionControlStore(s => s.activeView)
+  const setView = useMissionControlStore(s => s.setView)
 
-  const agents = [...store.agents.values()]
+  const agents = [...agentsMap.values()]
   const active = agents.filter(a => a.status === 'active').length
-  const conflicts = store.activeConflicts.length
+  const conflicts = activeConflicts.length
 
   return (
     <div className="flex h-screen w-screen bg-base text-text-primary overflow-hidden">
@@ -22,8 +28,8 @@ export default function App() {
         <div className="px-4 py-5 border-b border-border">
           <h1 className="text-lg font-semibold tracking-tight text-accent-green">MissionControl</h1>
           <div className="flex items-center gap-2 mt-2 text-xs text-text-muted">
-            <span className={`w-2 h-2 rounded-full ${store.wsConnected ? 'bg-accent-green' : 'bg-accent-red'}`} />
-            {store.wsConnected ? 'Live' : 'Reconnecting'}
+            <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-accent-green' : 'bg-accent-red'}`} />
+            {wsConnected ? 'Live' : 'Reconnecting'}
           </div>
         </div>
         <nav className="flex-1 py-2">
@@ -36,9 +42,9 @@ export default function App() {
           ] as const).map(item => (
             <button
               key={item.key}
-              onClick={() => store.setView(item.key)}
+              onClick={() => setView(item.key)}
               className={`w-full text-left px-4 py-2 text-sm font-medium transition-colors ${
-                store.activeView === item.key
+                activeView === item.key
                   ? 'bg-elevated text-accent-blue'
                   : 'text-text-secondary hover:text-text-primary hover:bg-elevated/50'
               }`}
@@ -53,16 +59,16 @@ export default function App() {
         <header className="h-12 bg-surface border-b border-border flex items-center px-4 gap-6 text-xs text-text-secondary">
           <span>Agents: <strong className="text-text-primary">{active}/{agents.length}</strong></span>
           <span>Conflicts: <strong className={conflicts > 0 ? 'text-accent-red' : 'text-text-primary'}>{conflicts}</strong></span>
-          <span>Intents: <strong className="text-text-primary">{store.activeIntents.size}</strong></span>
-          <span>Decisions: <strong className="text-text-primary">{store.decisions.length}</strong></span>
+          <span>Intents: <strong className="text-text-primary">{activeIntentsSize}</strong></span>
+          <span>Decisions: <strong className="text-text-primary">{decisionsLength}</strong></span>
         </header>
 
         <div className="flex-1 overflow-auto p-4">
-          {store.activeView === 'fleet' && <AgentFleet />}
-          {store.activeView === 'graph' && <ContextGraph />}
-          {store.activeView === 'decisions' && <DecisionLog />}
-          {store.activeView === 'conflicts' && <ConflictFeed />}
-          {store.activeView === 'failures' && <FailureMemory />}
+          {activeView === 'fleet' && <AgentFleet />}
+          {activeView === 'graph' && <ContextGraph />}
+          {activeView === 'decisions' && <DecisionLog />}
+          {activeView === 'conflicts' && <ConflictFeed />}
+          {activeView === 'failures' && <FailureMemory />}
         </div>
       </main>
     </div>

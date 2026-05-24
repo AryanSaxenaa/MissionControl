@@ -1,11 +1,20 @@
 import { HydraDBClient } from '@hydradb/sdk'
 import { v4 as uuidv4 } from 'uuid'
 
-export const hydra = new HydraDBClient({
-  token: process.env.HYDRA_API_KEY!,
-})
+let _hydra: HydraDBClient | null = null
+function getHydra(): HydraDBClient {
+  if (!_hydra) {
+    _hydra = new HydraDBClient({
+      token: process.env.HYDRA_API_KEY!,
+    })
+  }
+  return _hydra
+}
 
-export const TENANT_ID = process.env.HYDRA_TENANT_ID!
+export function getTenantId(): string {
+  return process.env.HYDRA_TENANT_ID!
+}
+export function getHydraForTest(): HydraDBClient { return getHydra() }
 
 export const SUB_TENANTS = {
   SHARED: 'shared',
@@ -24,8 +33,8 @@ export async function ingestContext(params: {
 }): Promise<string> {
   const text = `[CONTEXT] scope:${params.scope} tags:${params.tags.join(',')}\n${params.content}`
 
-  const result = await hydra.ingestionPipeline.ingestMemory({
-    tenant_id: TENANT_ID,
+  const result = await getHydra().ingestionPipeline.ingestMemory({
+    tenant_id: getTenantId(),
     sub_tenant_id: SUB_TENANTS.SHARED,
     text,
     infer: true,
@@ -55,8 +64,8 @@ export async function ingestDecision(params: {
 }): Promise<string> {
   const text = `[DECISION] ${params.summary}\nAgent: ${params.agentId}\nAffected files: ${params.affectedFiles.join(', ')}\nAlternatives considered: ${params.alternativesConsidered.join('; ')}\nReasoning: ${params.reasoning}\nTags: ${params.tags.join(', ')}`
 
-  const result = await hydra.ingestionPipeline.ingestMemory({
-    tenant_id: TENANT_ID,
+  const result = await getHydra().ingestionPipeline.ingestMemory({
+    tenant_id: getTenantId(),
     sub_tenant_id: SUB_TENANTS.DECISIONS,
     text,
     infer: true,
@@ -85,8 +94,8 @@ export async function ingestFailure(params: {
 }): Promise<string> {
   const text = `[FAILURE] target:${params.target} errorType:${params.errorType}\nTask attempted: ${params.task}\nError: ${params.errorMessage}\nContext at failure: ${params.context}\nAgent: ${params.agentId}\n${params.stackTrace ? `Stack trace:\n${params.stackTrace}` : ''}`
 
-  const result = await hydra.ingestionPipeline.ingestMemory({
-    tenant_id: TENANT_ID,
+  const result = await getHydra().ingestionPipeline.ingestMemory({
+    tenant_id: getTenantId(),
     sub_tenant_id: SUB_TENANTS.FAILURES,
     text,
     infer: false,
@@ -106,8 +115,8 @@ export async function ingestFailure(params: {
 }
 
 export async function recallContext(query: string, subTenant = SUB_TENANTS.SHARED) {
-  return hydra.recall.fullRecall({
-    tenant_id: TENANT_ID,
+  return getHydra().recall.fullRecall({
+    tenant_id: getTenantId(),
     sub_tenant_id: subTenant,
     query,
     max_results: 10,
@@ -117,8 +126,8 @@ export async function recallContext(query: string, subTenant = SUB_TENANTS.SHARE
 }
 
 export async function recallFailuresForTarget(target: string) {
-  return hydra.recall.booleanRecall({
-    tenant_id: TENANT_ID,
+  return getHydra().recall.booleanRecall({
+    tenant_id: getTenantId(),
     sub_tenant_id: SUB_TENANTS.FAILURES,
     query: `target:${target}`,
     max_results: 10,
@@ -126,8 +135,8 @@ export async function recallFailuresForTarget(target: string) {
 }
 
 export async function recallDecisionsForTarget(target: string) {
-  return hydra.recall.fullRecall({
-    tenant_id: TENANT_ID,
+  return getHydra().recall.fullRecall({
+    tenant_id: getTenantId(),
     sub_tenant_id: SUB_TENANTS.DECISIONS,
     query: `decisions affecting ${target}`,
     max_results: 10,
@@ -136,8 +145,8 @@ export async function recallDecisionsForTarget(target: string) {
 }
 
 export async function recallParentContext(parentAgentId: string) {
-  return hydra.recall.fullRecall({
-    tenant_id: TENANT_ID,
+  return getHydra().recall.fullRecall({
+    tenant_id: getTenantId(),
     sub_tenant_id: SUB_TENANTS.agentId(parentAgentId),
     query: 'important context decisions patterns failures',
     max_results: 50,
@@ -146,8 +155,8 @@ export async function recallParentContext(parentAgentId: string) {
 }
 
 export async function whyQuery(target: string) {
-  return hydra.recall.qna({
-    tenant_id: TENANT_ID,
+  return getHydra().recall.qna({
+    tenant_id: getTenantId(),
     sub_tenant_id: SUB_TENANTS.DECISIONS,
     question: `Why were certain decisions made about ${target}? What reasoning and alternatives were considered?`,
     include_graph_context: true,
@@ -155,15 +164,15 @@ export async function whyQuery(target: string) {
 }
 
 export async function getGraphSuperNodes() {
-  return hydra.graphHealth.getSuperNodes({
-    tenant_id: TENANT_ID,
+  return getHydra().graphHealth.getSuperNodes({
+    tenant_id: getTenantId(),
     limit: 50,
   })
 }
 
 export async function ingestAgentSummary(agentId: string, summary: string) {
-  await hydra.ingestionPipeline.ingestMemory({
-    tenant_id: TENANT_ID,
+  await getHydra().ingestionPipeline.ingestMemory({
+    tenant_id: getTenantId(),
     sub_tenant_id: SUB_TENANTS.agentId(agentId),
     text: summary,
     infer: true,

@@ -57,7 +57,7 @@ export const useMissionControlStore = create<MissionControlStore>((set, get) => 
     set((s) => {
       const m = new Map(s.agents)
       const a = m.get(id)
-      if (a) m.set(id, { ...a, status, currentTask: task, lastHeartbeat: Date.now() })
+      if (a) m.set(id, { ...a, status, ...(task !== undefined && { currentTask: task }), lastHeartbeat: Date.now() })
       return { agents: m }
     }),
   markAgentDead: (id) =>
@@ -95,13 +95,18 @@ export const useMissionControlStore = create<MissionControlStore>((set, get) => 
     const conflict = get().activeConflicts.find((c) => c.id === id)
     if (!conflict) return
 
-    await fetch(`/api/conflicts/${id}/resolve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resolution }),
-    })
+    try {
+      const resp = await fetch(`/api/conflicts/${id}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolution }),
+      })
+      if (!resp.ok) return
 
-    set((s) => _moveConflictToResolved(s, conflict, resolution))
+      set((s) => _moveConflictToResolved(s, conflict, resolution))
+    } catch {
+      // server unreachable — keep conflict visible
+    }
   },
 
   decisions: [],

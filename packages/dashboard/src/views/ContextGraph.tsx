@@ -3,9 +3,8 @@ import { useMissionControlStore } from '../store/useStore'
 import * as d3 from 'd3'
 
 export default function ContextGraph() {
-  const store = useMissionControlStore()
+  const data = useMissionControlStore(s => s.graphData)
   const svgRef = useRef<SVGSVGElement>(null)
-  const data = store.graphData
 
   useEffect(() => {
     if (!svgRef.current || !data) return
