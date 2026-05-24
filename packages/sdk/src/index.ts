@@ -13,7 +13,7 @@ class MissionControlError extends Error {
 }
 
 async function fetchJson<T>(url: string, opts: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
-  const { timeoutMs = 10000, ...fetchOpts } = opts
+  const { timeoutMs = 30000, ...fetchOpts } = opts
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -183,6 +183,14 @@ export class Agent {
 export { generateClaudeCodeHooks, buildClaudeSettingsHooks } from './hooks/claude-code.js'
 export { generateOpenCodeHooks } from './hooks/opencode.js'
 
-export function defineConfig(config: unknown) {
+export interface MissionControlConfig {
+  server: { port: number }
+  dashboard: { port: number }
+  hydra: { apiKey: string; tenantId: string }
+}
+
+export function defineConfig(config: MissionControlConfig): MissionControlConfig {
+  if (!config.hydra?.apiKey) console.warn('[MissionControl] HYDRA_API_KEY is missing from config')
+  if (!config.hydra?.tenantId) console.warn('[MissionControl] HYDRA_TENANT_ID is missing from config')
   return config
 }

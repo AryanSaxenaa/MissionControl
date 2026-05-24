@@ -28,19 +28,23 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     agents.set(agentId, newAgent)
 
     if (body.parentAgentId) {
-      const recalled = await recallParentContext(body.parentAgentId)
-      if (recalled.chunks?.length) {
-        inheritedContext = recalled.chunks
-          .slice(0, 20)
-          .map((c: any) => c.chunk_content)
-          .join('\n---\n')
+      try {
+        const recalled = await recallParentContext(body.parentAgentId)
+        if (recalled.chunks?.length) {
+          inheritedContext = recalled.chunks
+            .slice(0, 20)
+            .map((c: any) => c.chunk_content)
+            .join('\n---\n')
 
-        await ingestAgentSummary(
-          agentId,
-          `Inherited context from parent agent ${body.parentAgentId}:\n${inheritedContext}`
-        )
+          incrementCounter(agentId, 'inherited', recalled.chunks.length)
 
-        incrementCounter(agentId, 'inherited', recalled.chunks.length)
+          ingestAgentSummary(
+            agentId,
+            `Inherited context from parent agent ${body.parentAgentId}:\n${inheritedContext}`
+          ).catch(e => console.error('[agents:register] summary ingest failed:', (e as Error).message))
+        }
+      } catch (e) {
+        console.error('[agents:register] parent context recall failed:', (e as Error).message)
       }
 
       broadcast({ type: 'agent:registered', agent: { ...agents.get(agentId)!, parentAgentId: body.parentAgentId } })

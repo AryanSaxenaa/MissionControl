@@ -22,7 +22,12 @@ export default async function decisionRoutes(fastify: FastifyInstance) {
 
   fastify.get('/why', async (req, reply) => {
     const query = WhyQuerySchema.parse(req.query)
-    const result = await whyQuery(query.target)
-    return { answer: result.answer ?? 'No answer available', chunks: result.chunks ?? [] }
+    try {
+      const result = await whyQuery(query.target)
+      return { answer: result.answer ?? 'No answer available', chunks: result.chunks ?? [] }
+    } catch (e) {
+      console.error('[decisions:why] query failed:', (e as Error).message)
+      return { answer: 'HydraDB is still indexing. Check back soon.', chunks: [] }
+    }
   })
 }

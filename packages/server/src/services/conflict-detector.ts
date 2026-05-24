@@ -55,22 +55,26 @@ export async function detectConflicts(newIntent: IntentRecord): Promise<Conflict
   }
 
   if (conflicts.filter(c => c.severity === 'critical').length === 0) {
-    const decisions = await recallDecisionsForTarget(newIntent.target)
-    const decisionText = decisions.chunks?.map((c: any) => c.chunk_content).join('\n') ?? ''
+    try {
+      const decisions = await recallDecisionsForTarget(newIntent.target)
+      const decisionText = decisions.chunks?.map((c: any) => c.chunk_content).join('\n') ?? ''
 
-    if (decisionText.trim()) {
-      const architecturalConflict = await checkArchitecturalConflict(newIntent, decisionText)
-      if (architecturalConflict) {
-        conflicts.push({
-          id: `conflict-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          severity: 'warning',
-          kind: 'architectural',
-          description: `${newIntent.description} may contradict architectural decisions: ${architecturalConflict}`,
-          agentIds: [newIntent.agentId],
-          intentIds: [newIntent.id],
-          createdAt: Date.now(),
-        })
+      if (decisionText.trim()) {
+        const architecturalConflict = await checkArchitecturalConflict(newIntent, decisionText)
+        if (architecturalConflict) {
+          conflicts.push({
+            id: `conflict-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            severity: 'warning',
+            kind: 'architectural',
+            description: `${newIntent.description} may contradict architectural decisions: ${architecturalConflict}`,
+            agentIds: [newIntent.agentId],
+            intentIds: [newIntent.id],
+            createdAt: Date.now(),
+          })
+        }
       }
+    } catch {
+      // architectural check failed (timeout or network) — skip, not critical
     }
   }
 
