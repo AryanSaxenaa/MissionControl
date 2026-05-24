@@ -2,6 +2,8 @@ import { Command } from 'commander'
 
 export const agentCmd = new Command('agent')
   .description('Agent operations')
+
+agentCmd
   .command('register <name>')
   .description('Register a new agent')
   .option('-k, --kind <kind>', 'Agent kind', 'custom')

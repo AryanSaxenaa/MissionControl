@@ -2,6 +2,8 @@ import { Command } from 'commander'
 
 export const contextCmd = new Command('context')
   .description('Context memory operations')
+
+contextCmd
   .command('query <scope>')
   .description('Query context for a scope')
   .option('-a, --agent <agentId>', 'Agent ID')
