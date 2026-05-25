@@ -22,11 +22,10 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
   const [error,       setError]       = useState('')
 
   const spawn = async () => {
+    if (!projectPath.trim()) { setError('Project path is required'); return }
     setLoading(true); setError('')
     try {
-      // Auto-generate a name from kind + timestamp
       const name = `${kind}-${Date.now().toString(36)}`
-      // No task = launch the AI interactively, user types in the terminal
       const resp = await fetch('/api/agents/spawn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -34,7 +33,7 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
           kind,
           name,
           task:        '',
-          projectPath: projectPath.trim() || undefined,
+          projectPath: projectPath.trim(),
         }),
       })
       if (!resp.ok) {
@@ -87,11 +86,10 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
             </div>
           </div>
 
-          {/* Project path */}
+          {/* Project path — required */}
           <div>
             <label className="block text-xs text-[#666] uppercase tracking-widest mb-2">
               Project Path
-              <span className="text-[#444] ml-2 normal-case tracking-normal text-[10px]">optional</span>
             </label>
             <input
               value={projectPath}
@@ -99,7 +97,7 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
               placeholder="C:\Users\you\your-project"
               className="w-full bg-black border border-[#2a2a2a] text-[#d4d4d4] text-sm font-mono px-3 py-2 outline-none focus:border-orange-500 placeholder-[#444] transition-colors"
             />
-            <p className="text-[#444] text-xs mt-1">Leave blank to use the MissionControl repo</p>
+            <p className="text-[#444] text-xs mt-1">Absolute path to the project the AI will work in</p>
           </div>
 
           {error && <p className="text-xs text-red-500 font-mono">{error}</p>}

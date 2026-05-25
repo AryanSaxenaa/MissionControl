@@ -48,24 +48,44 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
     const agentId = `agent-${uuidv4()}`
 
-    // 1. Create worktree — branches off the mc repo but cwd is overridden to projectPath
-    const worktreePath = await createWorktree(agentId, task)
+    // Two modes:
+    //
+    // A) projectPath provided → agent works directly in the user's project.
+    //    No git worktree needed. Hooks installed into projectPath.
+    //    spawnCwd = projectPath.
+    //
+    // B) no projectPath → git-isolated mode. Worktree branched off MC repo.
+    //    Hooks installed into worktree. spawnCwd = worktreePath.
+    //    (Legacy/advanced usage — useful for working on the MC repo itself.)
 
-    // 2. Assign port + inject into .env
+    let worktreePath: string
+    let spawnCwd: string
+
+    if (projectPath) {
+      // Mode A — direct project mode, no worktree
+      worktreePath = projectPath   // stored for record-keeping; no git worktree created
+      spawnCwd     = projectPath
+    } else {
+      // Mode B — git worktree isolation
+      worktreePath = await createWorktree(agentId, task || 'session')
+      spawnCwd     = worktreePath
+    }
+
+    // Assign port + inject into project .env
     const assignedPort = assignPort(agentId)
-    await injectPortEnv(worktreePath, assignedPort)
+    await injectPortEnv(spawnCwd, assignedPort)
 
-    // 3. Install hooks
-    await installHooks(agentId, kind, worktreePath)
+    // Install AI hooks into the directory the agent will work in
+    await installHooks(agentId, kind, spawnCwd)
 
-    // 4. Inherit parent context if applicable
+    // Inherit parent context if applicable
     if (parentAgentId) {
       try {
-        await inheritParentContext(agentId, parentAgentId, path.join(worktreePath, '.mc_context'))
+        await inheritParentContext(agentId, parentAgentId, path.join(spawnCwd, '.mc_context'))
       } catch { /* non-fatal */ }
     }
 
-    // 5. Create agent record
+    // Create agent record
     const newAgent: AgentRecord = {
       id: agentId,
       name,
@@ -78,15 +98,14 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       assignedPort,
       worktreePath,
       currentTask: task,
-      projectPath,   // stored so diff/merge can reference it
+      projectPath,
     }
     agents.set(agentId, newAgent)
 
-    // 6. Broadcast before spawn (so dashboard has the record)
+    // Broadcast before spawn so dashboard shows the card immediately
     broadcast({ type: 'agent:spawned', agent: newAgent })
 
-    // 7. Spawn PTY in projectPath if provided, else in the worktree itself
-    const spawnCwd = projectPath ?? worktreePath
+    // Spawn PTY in the correct directory
     spawnAgent(agentId, kind, spawnCwd, task, assignedPort).catch(err => {
       console.error(`[spawn] PTY failed for ${agentId}:`, err.message)
       broadcast({ type: 'agent:died', agentId })
