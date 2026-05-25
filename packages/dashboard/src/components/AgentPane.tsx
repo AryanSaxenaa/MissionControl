@@ -6,21 +6,36 @@ interface AgentPaneProps {
   agentName: string
   status: string
   assignedPort: number
+  colorIndex?: number
   onMergeClick: () => void
 }
 
+// Distinct accent colors per agent — cycles through the palette
+const AGENT_COLORS = [
+  '#f97316', // orange
+  '#3b82f6', // blue
+  '#a855f7', // purple
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#06b6d4', // cyan
+  '#ec4899', // pink
+  '#84cc16', // lime
+] as const
+
 const STATUS_TEXT: Record<string, string> = {
-  active:    'text-orange-500',
-  idle:      'text-yellow-500',
-  failed:    'text-red-500',
-  completed: 'text-green-500',
+  active:    'text-orange-400',
+  idle:      'text-yellow-400',
+  failed:    'text-red-400',
+  completed: 'text-green-400',
 }
 
-export function AgentPane({ agentId, agentName, status, assignedPort, onMergeClick }: AgentPaneProps) {
+export function AgentPane({ agentId, agentName, status, assignedPort, colorIndex = 0, onMergeClick }: AgentPaneProps) {
   const termRef  = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<any>(null)
   const fitRef   = useRef<any>(null)
   const wsRef    = useRef<WebSocket | null>(null)
+
+  const accentColor = AGENT_COLORS[colorIndex % AGENT_COLORS.length]
 
   useEffect(() => {
     let term: any
@@ -35,15 +50,15 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
 
       term = new Terminal({
         theme: {
-          background:         '#000000',
-          foreground:         '#d4d4d4',
-          cursor:             '#f97316',
-          selectionBackground:'#f9731640',
+          background:          '#000000',
+          foreground:          '#d4d4d4',
+          cursor:              accentColor,
+          selectionBackground: `${accentColor}30`,
         },
-        fontFamily:     '"JetBrains Mono", "Fira Mono", monospace',
-        fontSize:       13,
-        cursorBlink:    true,
-        scrollback:     5000,
+        fontFamily:      '"JetBrains Mono", "Fira Mono", monospace',
+        fontSize:        12,
+        cursorBlink:     true,
+        scrollback:      5000,
         allowProposedApi: true,
       })
 
@@ -54,19 +69,12 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
 
       if (termRef.current) {
         term.open(termRef.current)
-
-        // Initial fit — defer one frame so the DOM has rendered
         requestAnimationFrame(() => {
           fitAddon.fit()
           notifyPtyResize(term.cols, term.rows)
         })
-
-        // Re-fit whenever the container size changes
         ro = new ResizeObserver(() => {
-          try {
-            fitAddon.fit()
-            notifyPtyResize(term.cols, term.rows)
-          } catch { /* ignore mid-unmount errors */ }
+          try { fitAddon.fit(); notifyPtyResize(term.cols, term.rows) } catch { /* ignore */ }
         })
         ro.observe(termRef.current)
       }
@@ -82,23 +90,17 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
         if (e.data instanceof ArrayBuffer) term.write(new Uint8Array(e.data))
         else term.write(e.data as string)
       }
-      ws.onopen = () => {
-        // Sync PTY size with actual terminal once connected
-        notifyPtyResize(term.cols, term.rows)
-      }
+      ws.onopen = () => notifyPtyResize(term.cols, term.rows)
 
       term.onData((data: string) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(data)
       })
-
-      // When user resizes the terminal, tell PTY server
       term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
         notifyPtyResize(cols, rows)
       })
     }
 
     function notifyPtyResize(cols: number, rows: number) {
-      // POST to server so it can call pty.resize(cols, rows)
       fetch(`/api/agents/${agentId}/resize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -107,32 +109,47 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
     }
 
     init().catch(console.error)
-
-    return () => {
-      ro?.disconnect()
-      ws?.close()
-      term?.dispose()
-    }
+    return () => { ro?.disconnect(); ws?.close(); term?.dispose() }
   }, [agentId])
 
-  const textClass = STATUS_TEXT[status] ?? 'text-[#888]'
+  const textClass = STATUS_TEXT[status] ?? 'text-[#666]'
 
   return (
-    <div className="flex flex-col border border-[#171717] bg-[#020202] overflow-hidden h-full hover:border-[#2a2a2a] transition-colors">
-
-      {/* Status bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[#171717] flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <HealthRing status={status} size={16} />
-          <span className="text-white text-sm font-mono">{agentName}</span>
-          <span className={`text-xs uppercase tracking-wider ${textClass}`}>{status}</span>
+    <div
+      className="flex flex-col overflow-hidden h-full bg-[#020202] transition-colors"
+      style={{ border: `1px solid ${accentColor}40` }}
+    >
+      {/* Status bar — accent-colored top border */}
+      <div
+        className="flex items-center justify-between px-3 py-1.5 flex-shrink-0"
+        style={{
+          borderBottom: `1px solid ${accentColor}30`,
+          background: `${accentColor}08`,
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <HealthRing status={status} size={14} />
+          <span
+            className="text-xs font-mono font-medium truncate max-w-[140px]"
+            style={{ color: accentColor }}
+            title={agentName}
+          >
+            {agentName}
+          </span>
+          <span className={`text-[10px] uppercase tracking-wider ${textClass}`}>{status}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[#444] text-xs">:{assignedPort}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[#444] text-[10px] font-mono">:{assignedPort}</span>
           {status === 'completed' && (
             <button
               onClick={onMergeClick}
-              className="px-3 py-1 text-xs border border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-black uppercase tracking-wider transition-all"
+              className="px-2 py-0.5 text-[10px] uppercase tracking-wider transition-all"
+              style={{
+                border: `1px solid ${accentColor}`,
+                color: accentColor,
+              }}
+              onMouseEnter={e => { (e.target as HTMLElement).style.background = accentColor; (e.target as HTMLElement).style.color = '#000' }}
+              onMouseLeave={e => { (e.target as HTMLElement).style.background = ''; (e.target as HTMLElement).style.color = accentColor }}
             >
               Review &amp; Merge
             </button>
@@ -140,7 +157,7 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
         </div>
       </div>
 
-      {/* Terminal — fills remaining height, scroll handled by xterm */}
+      {/* Terminal */}
       <div ref={termRef} className="flex-1 min-h-0 overflow-hidden bg-black" />
     </div>
   )

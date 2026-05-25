@@ -5,7 +5,7 @@ export default function FailureMemory() {
 
   return (
     <div className="flex flex-col h-full">
-      <h2 className="text-[42px] uppercase tracking-[0.18em] font-bold text-white mb-10">
+      <h2 className="text-[18px] uppercase tracking-[0.12em] font-bold text-white mb-4">
         Failure Memory
       </h2>
 

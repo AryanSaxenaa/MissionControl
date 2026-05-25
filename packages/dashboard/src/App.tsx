@@ -12,7 +12,7 @@ const SERVER_URL = import.meta.env.VITE_MC_SERVER_URL || window.location.origin
 
 // Pixel logo — 5×5 grid, orange active cells
 const LOGO_CELLS = [2,6,7,8,10,11,12,13,14,16,17,18,22]
-function PixelLogo({ size = 40 }: { size?: number }) {
+function PixelLogo({ size = 28 }: { size?: number }) {
   return (
     <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(5,1fr)', width: size, height: size }}>
       {Array.from({ length: 25 }).map((_, i) => (
@@ -54,16 +54,16 @@ export default function App() {
     <div className="flex h-screen w-screen bg-black text-white overflow-hidden font-mono">
 
       {/* SIDEBAR */}
-      <aside className="w-[260px] flex-shrink-0 border-r border-[#171717] bg-[#020202] flex flex-col">
+      <aside className="w-[220px] flex-shrink-0 border-r border-[#171717] bg-[#020202] flex flex-col">
 
         {/* Logo */}
-        <div className="px-7 py-8 border-b border-[#171717]">
-          <div className="flex items-center gap-4">
-            <PixelLogo />
+        <div className="px-5 py-5 border-b border-[#171717]">
+          <div className="flex items-center gap-3">
+            <PixelLogo size={28} />
             <div>
-              <h1 className="text-[20px] font-semibold tracking-tight text-white">MissionControl</h1>
-              <div className="flex items-center gap-2 mt-2 text-[#a3a3a3] text-sm">
-                <span className={`w-2 h-2 rounded-full ${eventsConnected ? 'bg-orange-500 animate-pulse' : 'bg-[#555]'}`} />
+              <h1 className="text-[15px] font-semibold tracking-tight text-white">MissionControl</h1>
+              <div className="flex items-center gap-1.5 mt-1 text-[#a3a3a3] text-[11px]">
+                <span className={`w-1.5 h-1.5 rounded-full ${eventsConnected ? 'bg-orange-500 animate-pulse' : 'bg-[#555]'}`} />
                 {eventsConnected ? 'Live' : 'Reconnecting'}
               </div>
             </div>
@@ -71,20 +71,20 @@ export default function App() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-5">
+        <nav className="flex-1 py-3">
           {NAV_ITEMS.map(({ key, label, icon: Icon }) => {
             const isActive = activeView === key
             return (
               <button
                 key={key}
                 onClick={() => setView(key)}
-                className={`w-full h-[62px] px-7 flex items-center gap-4 text-sm tracking-wide transition-all duration-200 border-l-2 ${
+                className={`w-full h-[46px] px-5 flex items-center gap-3 text-xs tracking-wide transition-all duration-200 border-l-2 ${
                   isActive
                     ? 'border-orange-500 bg-[#0b0b0b] text-orange-500'
                     : 'border-transparent text-[#b4b4b4] hover:bg-[#0a0a0a] hover:text-white'
                 }`}
               >
-                <Icon size={18} />
+                <Icon size={14} />
                 <span>{label}</span>
               </button>
             )
@@ -92,8 +92,8 @@ export default function App() {
         </nav>
 
         {/* Footer */}
-        <div className="px-7 py-6 border-t border-[#171717] text-xs text-[#666]">
-          <div className="text-[#9a9a9a] mb-2">MissionControl Console</div>
+        <div className="px-5 py-4 border-t border-[#171717] text-[10px] text-[#555]">
+          <div className="text-[#666] mb-1">MissionControl Console</div>
           <div>© 2025 MissionControl, Inc.</div>
         </div>
       </aside>
@@ -114,7 +114,7 @@ export default function App() {
         />
 
         {/* Stats bar */}
-        <div className="relative z-10 h-[72px] border-b border-[#171717] flex items-center px-10 gap-14 text-sm tracking-wide flex-shrink-0">
+        <div className="relative z-10 h-[44px] border-b border-[#171717] flex items-center px-6 gap-8 text-xs tracking-wide flex-shrink-0">
           <TopMetric label="Agents"    value={`${active}/${agents.length}`} warn={false} />
           <TopMetric label="Conflicts" value={String(conflicts)} warn={conflicts > 0} />
           <TopMetric label="Intents"   value={String(activeIntentsSize)} warn={false} />
@@ -127,7 +127,7 @@ export default function App() {
         </div>
 
         {/* View content */}
-        <div className="relative z-10 flex-1 overflow-auto px-12 py-10">
+        <div className="relative z-10 flex-1 overflow-auto px-6 py-5">
           {activeView === 'fleet'     && <AgentFleet />}
           {activeView === 'graph'     && <ContextGraph />}
           {activeView === 'decisions' && <DecisionLog />}

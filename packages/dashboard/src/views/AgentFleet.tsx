@@ -22,13 +22,13 @@ export default function AgentFleet() {
     <div className="flex flex-col h-full gap-0">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-10">
-        <h2 className="text-[42px] uppercase tracking-[0.18em] font-bold text-white">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-[22px] uppercase tracking-[0.15em] font-bold text-white">
           Agent Fleet
         </h2>
         <button
           onClick={() => setShowNewAgent(true)}
-          className="h-11 px-6 border border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-black transition-all duration-200 flex items-center gap-2 text-sm uppercase tracking-wider"
+          className="h-9 px-5 border border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-black transition-all duration-200 flex items-center gap-2 text-xs uppercase tracking-wider"
         >
           <Plus size={16} />
           New Agent
@@ -61,14 +61,15 @@ export default function AgentFleet() {
 
       {/* Agent grid */}
       {agents.length > 0 && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 flex-1 min-h-0 auto-rows-[360px]">
-          {agents.map(agent => (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 flex-1 min-h-0 auto-rows-[320px]">
+          {agents.map((agent, idx) => (
             <AgentPane
               key={agent.id}
               agentId={agent.id}
               agentName={agent.name}
               status={agent.status}
               assignedPort={agent.assignedPort ?? 0}
+              colorIndex={idx}
               onMergeClick={() => {
                 if (!agentsPendingMerge.includes(agent.id)) addAgentPendingMerge(agent.id)
               }}

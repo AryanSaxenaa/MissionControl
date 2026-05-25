@@ -11,30 +11,31 @@ export const directModeAgents = new Set<string>()
 const IS_WINDOWS = process.platform === 'win32'
 
 /**
- * Spec Non-Negotiable #14: Task is injected via PTY stdin after prompt detection.
- * Not via CLI flags. Works universally for all agent kinds.
+ * Spec Non-Negotiable #14: Task injected via PTY stdin after prompt detection.
  *
- * Windows note: node-pty ConPTY does NOT resolve PATH. We spawn through cmd.exe
- * which resolves PATH correctly. cmd.exe /c passes its stdin through to the child
- * process, so writing to the PTY after the CLI prompt appears IS PTY stdin injection.
- *
- * All CLIs: launch → wait for prompt → write task as keystrokes via PTY stdin.
- * custom: same, but uses cmd /k (keep shell alive) instead of cmd /c.
+ * Windows spawning strategy:
+ *   WITH task:    cmd /c <cli>  — cli runs, stdin injection works, exits when done.
+ *                                 Exit code from cli propagates: 0=completed, else=died.
+ *   WITHOUT task: cmd /k <cli>  — cmd stays alive after cli exits so the user can
+ *                                 interact freely. When user closes it, cmd /k exits 0.
+ *   custom:       cmd /k always — interactive shell, task injected as keystrokes.
  */
-function buildSpawn(kind: AgentKind): { cmd: string; args: string[] } {
+function buildSpawn(kind: AgentKind, hasTask: boolean): { cmd: string; args: string[]; keepAlive: boolean } {
   if (IS_WINDOWS) {
+    const flag = (!hasTask || kind === 'custom') ? '/k' : '/c'
+    const keepAlive = flag === '/k'
     switch (kind) {
-      case 'claude-code': return { cmd: 'cmd.exe', args: ['/c', 'claude']   }
-      case 'codex':       return { cmd: 'cmd.exe', args: ['/c', 'codex']    }
-      case 'opencode':    return { cmd: 'cmd.exe', args: ['/c', 'opencode'] }
-      case 'custom':      return { cmd: 'cmd.exe', args: ['/k']             }
+      case 'claude-code': return { cmd: 'cmd.exe', args: [flag, 'claude'],   keepAlive }
+      case 'codex':       return { cmd: 'cmd.exe', args: [flag, 'codex'],    keepAlive }
+      case 'opencode':    return { cmd: 'cmd.exe', args: [flag, 'opencode'], keepAlive }
+      case 'custom':      return { cmd: 'cmd.exe', args: ['/k'],             keepAlive: true }
     }
   }
-  switch (kind) {
-    case 'claude-code': return { cmd: 'claude',   args: [] }
-    case 'codex':       return { cmd: 'codex',    args: [] }
-    case 'opencode':    return { cmd: 'opencode', args: [] }
-    case 'custom':      return { cmd: 'bash',     args: [] }
+  // Unix — always spawn CLI directly, no wrapper needed
+  return {
+    cmd:       kind === 'custom' ? 'bash' : kind === 'claude-code' ? 'claude' : kind,
+    args:      [],
+    keepAlive: !hasTask,   // no task = interactive = any exit is "completed"
   }
 }
 
@@ -47,7 +48,8 @@ export async function spawnAgent(
   isDirectMode = false   // true = Mode A (user's project, no worktree)
 ): Promise<void> {
   if (isDirectMode) directModeAgents.add(agentId)
-  const { cmd, args } = buildSpawn(kind)
+  const hasTask = task.trim().length > 0
+  const { cmd, args, keepAlive } = buildSpawn(kind, hasTask)
 
   const instance = pty.spawn(cmd, args, {
     name: 'xterm-256color',
@@ -65,9 +67,9 @@ export async function spawnAgent(
   ptyInstances.set(agentId, instance)
 
   // Spec Non-Negotiable #14: inject task via PTY stdin after prompt detection.
-  // Applies to all kinds (including claude-code, codex, opencode) when task is non-empty.
-  // For custom shell we always wait for prompt (task may be empty = interactive mode).
-  const hasTask = task.trim().length > 0
+  // When task is non-empty: wait for prompt then write it as keystrokes.
+  // When task is empty and custom shell: wait for prompt (gives user a clean prompt).
+  // When task is empty and AI CLI: no injection — CLI is already in interactive mode.
   if (hasTask || kind === 'custom') {
     await waitForPrompt(instance)
     if (hasTask) {
@@ -81,11 +83,13 @@ export async function spawnAgent(
     const isDirect = directModeAgents.has(agentId)
     directModeAgents.delete(agentId)
 
-    // Spec §5.1: exit 0 → completed + ready-to-merge; non-zero → died.
-    // Exception: claude-code, codex, opencode on Windows exit via cmd /c which
-    // always returns the child's exit code. A non-zero exit on these CLIs means
-    // the session genuinely errored (auth failure, crash) — broadcast agent:died.
-    if (exitCode === 0) {
+    // keepAlive (cmd /k or interactive mode): user closed the session manually.
+    // Any exit code is treated as a clean completion — it's a deliberate close.
+    //
+    // cmd /c with task: spec §5.1 binary — exit 0 = completed, non-zero = died.
+    // A non-zero exit from cmd /c means the CLI itself errored (auth, crash, etc).
+    const isClean = keepAlive ? true : exitCode === 0
+    if (isClean) {
       broadcast({ type: 'agent:completed', agentId })
       if (!isDirect) {
         broadcast({ type: 'agent:ready-to-merge', agentId })

@@ -22,8 +22,8 @@ export default function DecisionLog() {
   }
 
   return (
-    <div className="flex flex-col h-full gap-6">
-      <h2 className="text-[42px] uppercase tracking-[0.18em] font-bold text-white">
+    <div className="flex flex-col h-full gap-4">
+      <h2 className="text-[18px] uppercase tracking-[0.12em] font-bold text-white">
         Decision Log
       </h2>
 
