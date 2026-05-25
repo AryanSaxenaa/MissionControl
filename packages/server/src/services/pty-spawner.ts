@@ -83,21 +83,27 @@ export async function spawnAgent(
     const isDirect = directModeAgents.has(agentId)
     directModeAgents.delete(agentId)
 
-    // claude-code, codex, and opencode are interactive TUIs that exit with non-zero
-    // even after a completely successful session (codex exits 1, claude exits 1, etc).
-    // Their exit codes are NOT reliable success/failure signals — they reflect internal
-    // TUI state, not whether the user's task succeeded.
-    //
-    // Rule: any exit from claude-code/codex/opencode = completed session.
-    // Only custom shell uses exit code 0/non-zero to distinguish success from failure.
-    const isClean = kind !== 'custom' ? true : exitCode === 0
-    if (isClean) {
-      broadcast({ type: 'agent:completed', agentId })
-      if (!isDirect) {
-        broadcast({ type: 'agent:ready-to-merge', agentId })
+    if (kind === 'custom') {
+      // Custom shell: exit 0 = user's script finished cleanly → completed + maybe merge.
+      // Non-zero = script error → died.
+      if (exitCode === 0) {
+        broadcast({ type: 'agent:completed', agentId })
+        if (!isDirect) broadcast({ type: 'agent:ready-to-merge', agentId })
+      } else {
+        broadcast({ type: 'agent:died', agentId })
       }
     } else {
-      broadcast({ type: 'agent:died', agentId })
+      // AI TUIs (claude-code, codex, opencode): the user closes the CLI when they're done.
+      // Exit codes are meaningless — these tools always exit non-zero.
+      // Just remove the card from the dashboard. No "failed", no "completed".
+      // If the agent was in a git worktree (Mode B), show the merge review first.
+      if (!isDirect) {
+        broadcast({ type: 'agent:completed', agentId })
+        broadcast({ type: 'agent:ready-to-merge', agentId })
+      } else {
+        // Mode A (direct project): just remove the card silently.
+        broadcast({ type: 'agent:removed', agentId })
+      }
     }
   })
 }
