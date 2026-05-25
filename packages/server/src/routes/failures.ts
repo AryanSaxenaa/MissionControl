@@ -3,8 +3,16 @@ import { broadcast } from '../ws-events.js'
 import { ingestFailure, recallFailuresForTarget } from '../hydra.js'
 import { incrementCounter } from '../services/agent-health.js'
 import { RecordFailureSchema, CheckFailuresSchema } from '../validators.js'
+import type { FailureItem } from '@missioncontrol/types'
+
+// In-memory ring buffer — last 500 failures this session
+const recentFailures: FailureItem[] = []
 
 export default async function failureRoutes(fastify: FastifyInstance) {
+  fastify.get('/', async () => {
+    return recentFailures
+  })
+
   fastify.post('/', async (req, reply) => {
     const body = RecordFailureSchema.parse(req.body)
 
@@ -24,6 +32,9 @@ export default async function failureRoutes(fastify: FastifyInstance) {
     const relatedChunks = recallResult?.chunks ?? []
     const isKnown = relatedChunks.length > 0
 
+    const item: FailureItem = { sourceId, agentId: body.agentId, target: body.target, errorType: body.errorType, createdAt: Date.now() }
+    recentFailures.unshift(item)
+    if (recentFailures.length > 500) recentFailures.pop()
     broadcast({ type: 'failure:recorded', sourceId, agentId: body.agentId, target: body.target, errorType: body.errorType })
 
     return {

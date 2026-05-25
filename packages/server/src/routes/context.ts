@@ -3,6 +3,8 @@ import { ingestContext, recallContext } from '../hydra.js'
 import { broadcast } from '../ws-events.js'
 import { incrementCounter } from '../services/agent-health.js'
 import { IngestContextSchema, QueryContextSchema } from '../validators.js'
+import { getGraphData } from '../services/graph-traversal.js'
+import { agents, activeIntents } from '../state.js'
 
 export default async function contextRoutes(fastify: FastifyInstance) {
   fastify.post('/', async (req, reply) => {
@@ -18,6 +20,17 @@ export default async function contextRoutes(fastify: FastifyInstance) {
     incrementCounter(body.agentId, 'contextWrote')
 
     broadcast({ type: 'context:ingested', sourceId, agentId: body.agentId, scope: body.scope, summary: body.content.slice(0, 200) })
+
+    // Push updated graph snapshot to all clients (avoids N client fetches)
+    getGraphData().then(({ superNodes, sources }) => {
+      broadcast({
+        type: 'graph:snapshot',
+        superNodes,
+        sources: sources.slice(0, 200),
+        activeAgents: [...agents.values()],
+        activeIntents: [...activeIntents.values()],
+      } as any)
+    }).catch(() => {})
 
     return { sourceId, relatedContext: '' }
   })

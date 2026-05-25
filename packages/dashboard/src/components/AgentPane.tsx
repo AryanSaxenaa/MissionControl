@@ -8,27 +8,23 @@ interface AgentPaneProps {
   onMergeClick: () => void
 }
 
-function HealthRing({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    active: '#00ff88',
-    idle: '#ffaa00',
-    failed: '#ff3355',
-    completed: '#4488ff',
-  }
-  const color = colors[status] ?? '#7a8099'
-  return (
-    <span
-      style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }}
-    />
-  )
+const STATUS_DOT: Record<string, string> = {
+  active:    'bg-orange-500 animate-pulse',
+  idle:      'bg-yellow-500',
+  failed:    'bg-red-500',
+  completed: 'bg-green-500',
+}
+const STATUS_TEXT: Record<string, string> = {
+  active:    'text-orange-500',
+  idle:      'text-yellow-500',
+  failed:    'text-red-500',
+  completed: 'text-green-500',
 }
 
 export function AgentPane({ agentId, agentName, status, assignedPort, onMergeClick }: AgentPaneProps) {
-  const termRef = useRef<HTMLDivElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const termRef  = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<any>(null)
-  const wsRef = useRef<WebSocket | null>(null)
-
+  const wsRef    = useRef<WebSocket | null>(null)
 
   useEffect(() => {
     let term: any
@@ -41,10 +37,16 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
       await import('@xterm/xterm/css/xterm.css')
 
       term = new Terminal({
-        theme: { background: '#0a0b0d', foreground: '#e8eaf0', cursor: '#00ff88' },
-        fontFamily: '"JetBrains Mono", monospace',
+        theme: {
+          background: '#000000',
+          foreground: '#d4d4d4',
+          cursor:     '#f97316',
+          selectionBackground: '#f9731640',
+        },
+        fontFamily: '"JetBrains Mono", "Fira Mono", monospace',
         fontSize: 13,
         cursorBlink: true,
+        allowProposedApi: true,
       })
       fitAddon = new FitAddon()
       term.loadAddon(fitAddon)
@@ -54,19 +56,16 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
       }
       xtermRef.current = term
 
-      const u = new URL(window.location.href)
+      const u    = new URL(window.location.href)
       u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
       u.pathname = `/pty/${agentId}`
-      ws = new WebSocket(u.toString())
+      ws         = new WebSocket(u.toString())
       wsRef.current = ws
 
       ws.binaryType = 'arraybuffer'
       ws.onmessage = (e: MessageEvent) => {
-        if (e.data instanceof ArrayBuffer) {
-          term.write(new Uint8Array(e.data))
-        } else {
-          term.write(e.data as string)
-        }
+        if (e.data instanceof ArrayBuffer) term.write(new Uint8Array(e.data))
+        else term.write(e.data as string)
       }
       term.onData((data: string) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(data)
@@ -74,36 +73,28 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
     }
 
     init().catch(console.error)
-
-    return () => {
-      ws?.close()
-      term?.dispose()
-    }
+    return () => { ws?.close(); term?.dispose() }
   }, [agentId])
 
-  const statusColor: Record<string, string> = {
-    active: 'text-[#00ff88]',
-    idle: 'text-[#ffaa00]',
-    failed: 'text-[#ff3355]',
-    completed: 'text-[#4488ff]',
-  }
-  const textColor = statusColor[status] ?? 'text-[#7a8099]'
+  const dotClass  = STATUS_DOT[status]  ?? 'bg-[#555]'
+  const textClass = STATUS_TEXT[status] ?? 'text-[#888]'
 
   return (
-    <div className="flex flex-col bg-[#111318] border border-[#1e2330] rounded-lg overflow-hidden h-full">
+    <div className="flex flex-col border border-[#171717] bg-[#020202] overflow-hidden h-full hover:border-[#2a2a2a] transition-colors">
+
       {/* Status bar */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#1a1d24] border-b border-[#1e2330] flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <HealthRing status={status} />
-          <span className="text-[#e8eaf0] text-sm font-mono">{agentName}</span>
-          <span className={`text-xs ${textColor}`}>{status}</span>
+      <div className="flex items-center justify-between px-4 py-2 border-b border-[#171717] flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <span className={`w-2 h-2 rounded-full ${dotClass}`} />
+          <span className="text-white text-sm font-mono">{agentName}</span>
+          <span className={`text-xs uppercase tracking-wider ${textClass}`}>{status}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[#4a5066] text-xs">:{assignedPort}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[#444] text-xs">:{assignedPort}</span>
           {status === 'completed' && (
             <button
               onClick={onMergeClick}
-              className="px-2 py-0.5 text-xs bg-[#00ff88] text-[#0a0b0d] rounded font-mono hover:bg-[#00cc6a]"
+              className="px-3 py-1 text-xs border border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-black uppercase tracking-wider transition-all"
             >
               Review &amp; Merge
             </button>
@@ -112,7 +103,7 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
       </div>
 
       {/* Terminal */}
-      <div ref={termRef} className="flex-1 min-h-0 p-1 overflow-hidden" />
+      <div ref={termRef} className="flex-1 min-h-0 p-1 overflow-hidden bg-black" />
     </div>
   )
 }

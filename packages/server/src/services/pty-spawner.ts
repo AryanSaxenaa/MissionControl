@@ -5,11 +5,23 @@ import { broadcast } from '../ws-events.js'
 // Maps agentId → pty instance
 export const ptyInstances = new Map<string, pty.IPty>()
 
+const IS_WINDOWS = process.platform === 'win32'
+
+// On Windows, npm-installed CLIs are .cmd wrapper scripts and cannot be spawned
+// directly by node-pty. We must invoke them via cmd.exe.
+function resolveSpawn(cmd: string, args: string[]): { cmd: string; args: string[] } {
+  if (IS_WINDOWS) {
+    return { cmd: 'cmd.exe', args: ['/c', cmd, ...args] }
+  }
+  return { cmd, args }
+}
+
+// Raw command names — resolveSpawn is applied once at spawn time
 const CLI_COMMANDS: Record<AgentKind, { cmd: string; args: string[] }> = {
-  'claude-code': { cmd: 'claude', args: [] },
-  'codex':       { cmd: 'codex', args: [] },
+  'claude-code': { cmd: 'claude',   args: [] },
+  'codex':       { cmd: 'codex',    args: [] },
   'opencode':    { cmd: 'opencode', args: [] },
-  'custom':      { cmd: 'bash', args: [] },
+  'custom':      { cmd: IS_WINDOWS ? 'cmd.exe' : 'bash', args: [] },
 }
 
 export async function spawnAgent(
@@ -19,7 +31,9 @@ export async function spawnAgent(
   task: string,
   port: number
 ): Promise<void> {
-  const { cmd, args } = CLI_COMMANDS[kind]
+  // custom kind already resolves to the shell directly; others need wrapping on Windows
+  const raw = CLI_COMMANDS[kind]
+  const { cmd, args } = (kind === 'custom') ? raw : resolveSpawn(raw.cmd, raw.args)
 
   const instance = pty.spawn(cmd, args, {
     name: 'xterm-256color',

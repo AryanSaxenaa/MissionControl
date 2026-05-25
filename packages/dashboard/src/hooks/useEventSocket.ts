@@ -42,6 +42,9 @@ export function useEventSocket(serverUrl: string) {
           case 'agent:died':
             store.markAgentDead(msg.agentId)
             break
+          case 'agent:removed':
+            store.removeAgent(msg.agentId)
+            break
           case 'agent:completed':
             store.markAgentCompleted(msg.agentId)
             break
@@ -82,7 +85,7 @@ export function useEventSocket(serverUrl: string) {
             store.setGraphData(msg)
             break
           case 'context:ingested':
-            fetch('/api/graph').then(r => r.json()).then(d => store.setGraphData(d)).catch(() => {})
+            // Server pushes graph:snapshot after ingest — no client-side poll needed
             break
         }
       } catch (e) {

@@ -1,3 +1,5 @@
+import { X } from 'lucide-react'
+
 interface PermissionModalProps {
   agentId: string
   agentName: string
@@ -19,38 +21,57 @@ export function PermissionModal({ agentName, requestId, tool, target, reason, on
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-[#1a1d24] border border-[#ffaa00] rounded-lg p-6 max-w-lg w-full mx-4">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-[#ffaa00] text-lg">⚠</span>
-          <span className="text-[#e8eaf0] font-mono">{agentName} needs permission</span>
-        </div>
-        <div className="space-y-2 mb-6 font-mono text-sm">
-          <div>
-            <span className="text-[#4a5066]">tool:</span>{' '}
-            <span className="text-[#4488ff]">{tool}</span>
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-[#020202] border border-orange-500/50 w-full max-w-lg mx-4 shadow-[0_0_40px_rgba(249,115,22,0.15)]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-7 py-5 border-b border-[#171717]">
+          <div className="flex items-center gap-3">
+            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+            <span className="text-orange-500 font-mono uppercase tracking-wider text-sm">
+              Permission Required
+            </span>
           </div>
-          <div>
-            <span className="text-[#4a5066]">target:</span>{' '}
-            <span className="text-[#e8eaf0]">{target}</span>
+          <button onClick={() => resolve('deny')} className="text-[#555] hover:text-white transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Agent */}
+        <div className="px-7 pt-5 pb-2">
+          <span className="text-[#888] text-xs uppercase tracking-widest">Agent: </span>
+          <span className="text-white text-sm font-mono">{agentName}</span>
+        </div>
+
+        {/* Details */}
+        <div className="px-7 py-4 space-y-3 font-mono text-sm">
+          <div className="flex gap-3">
+            <span className="text-[#555] uppercase text-xs w-14 pt-0.5">Tool</span>
+            <span className="text-orange-400">{tool}</span>
+          </div>
+          <div className="flex gap-3">
+            <span className="text-[#555] uppercase text-xs w-14 pt-0.5">Target</span>
+            <span className="text-[#d4d4d4] break-all">{target}</span>
           </div>
           {reason && (
-            <div>
-              <span className="text-[#4a5066]">reason:</span>{' '}
-              <span className="text-[#7a8099]">{reason}</span>
+            <div className="flex gap-3">
+              <span className="text-[#555] uppercase text-xs w-14 pt-0.5">Reason</span>
+              <span className="text-[#888]">{reason}</span>
             </div>
           )}
         </div>
-        <div className="flex gap-3 justify-end">
+
+        {/* Actions */}
+        <div className="flex gap-3 px-7 py-5 border-t border-[#171717]">
           <button
             onClick={() => resolve('deny')}
-            className="px-4 py-2 text-sm border border-[#ff3355] text-[#ff3355] rounded hover:bg-[#ff3355]/10"
+            className="flex-1 h-10 border border-red-500/50 text-red-500 text-sm uppercase tracking-wider hover:bg-red-500/10 transition-colors"
           >
             Deny
           </button>
           <button
             onClick={() => resolve('allow')}
-            className="px-4 py-2 text-sm bg-[#00ff88] text-[#0a0b0d] rounded font-mono hover:bg-[#00cc6a]"
+            className="flex-1 h-10 bg-orange-500 text-black text-sm uppercase tracking-wider font-semibold hover:bg-orange-400 transition-colors shadow-[0_0_20px_rgba(249,115,22,0.2)]"
           >
             Allow
           </button>

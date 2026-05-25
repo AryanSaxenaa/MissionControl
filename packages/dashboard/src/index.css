@@ -2,10 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: 'JetBrains Mono', monospace;
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
-h1, h2, h3, h4 {
-  font-family: 'IBM Plex Sans', sans-serif;
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #000;
+  color: #fff;
 }
+
+body {
+  font-family: 'JetBrains Mono', 'Fira Mono', 'Courier New', monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Remove default select/input browser styles */
+select, input, textarea {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Scrollbar — thin, dark */
+::-webkit-scrollbar         { width: 4px; height: 4px; }
+::-webkit-scrollbar-track   { background: #000; }
+::-webkit-scrollbar-thumb   { background: #2a2a2a; }
+::-webkit-scrollbar-thumb:hover { background: #444; }

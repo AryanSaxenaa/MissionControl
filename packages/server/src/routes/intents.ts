@@ -5,8 +5,13 @@ import { broadcast } from '../ws-events.js'
 import { detectConflicts } from '../services/conflict-detector.js'
 import { ingestAgentSummary } from '../hydra.js'
 import { DeclareIntentSchema, UpdateIntentSchema } from '../validators.js'
+import { trackConflict } from './conflicts.js'
 
 export default async function intentRoutes(fastify: FastifyInstance) {
+  fastify.get('/', async () => {
+    return [...activeIntents.values()]
+  })
+
   fastify.post('/', async (req, reply) => {
     const body = DeclareIntentSchema.parse(req.body)
 
@@ -26,6 +31,7 @@ export default async function intentRoutes(fastify: FastifyInstance) {
     broadcast({ type: 'intent:declared', intent })
 
     for (const c of conflicts) {
+      trackConflict(c)
       broadcast({ type: 'conflict:detected', conflict: c })
     }
 

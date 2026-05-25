@@ -4,6 +4,7 @@ import { detectConflicts } from '../services/conflict-detector.js'
 import { broadcast } from '../ws-events.js'
 import { activeIntents } from '../state.js'
 import { recallFailuresForTarget, ingestContext } from '../hydra.js'
+import { trackConflict } from './conflicts.js'
 
 const WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'Bash']
 
@@ -80,7 +81,7 @@ export async function hooksRoutes(app: FastifyInstance) {
     let conflicts: import('@missioncontrol/types').ConflictResult[] = []
     try {
       conflicts = await detectConflicts(intent)
-      for (const c of conflicts) broadcast({ type: 'conflict:detected', conflict: c })
+      for (const c of conflicts) { trackConflict(c); broadcast({ type: 'conflict:detected', conflict: c }) }
     } catch { /* non-fatal */ }
 
     const criticalConflict = conflicts.find(c => c.severity === 'critical')

@@ -3,6 +3,7 @@ import { getWorktreeDiff, mergeWorktree, deleteWorktree } from '../services/work
 import { recallContext } from '../hydra.js'
 import { releasePort } from '../services/port-registry.js'
 import { agents } from '../state.js'
+import { broadcast } from '../ws-events.js'
 
 export async function mergeRoutes(app: FastifyInstance) {
 
@@ -33,6 +34,7 @@ export async function mergeRoutes(app: FastifyInstance) {
     await mergeWorktree(id, commitMessage)
     releasePort(id)
     agents.delete(id)
+    broadcast({ type: 'agent:removed', agentId: id })
 
     return reply.send({ ok: true })
   })
@@ -44,6 +46,7 @@ export async function mergeRoutes(app: FastifyInstance) {
     await deleteWorktree(id)
     releasePort(id)
     agents.delete(id)
+    broadcast({ type: 'agent:removed', agentId: id })
 
     return reply.send({ ok: true })
   })

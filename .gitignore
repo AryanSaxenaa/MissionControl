@@ -49,3 +49,10 @@ yarn.lock
 *.pid
 *.seed
 *.pid.lock
+
+# MissionControl agent worktrees
+.trees/
+
+# Tool caches
+.commandcode/
+.firecrawl/
