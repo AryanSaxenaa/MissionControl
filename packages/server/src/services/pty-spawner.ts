@@ -83,12 +83,14 @@ export async function spawnAgent(
     const isDirect = directModeAgents.has(agentId)
     directModeAgents.delete(agentId)
 
-    // keepAlive (cmd /k or interactive mode): user closed the session manually.
-    // Any exit code is treated as a clean completion — it's a deliberate close.
+    // claude-code, codex, and opencode are interactive TUIs that exit with non-zero
+    // even after a completely successful session (codex exits 1, claude exits 1, etc).
+    // Their exit codes are NOT reliable success/failure signals — they reflect internal
+    // TUI state, not whether the user's task succeeded.
     //
-    // cmd /c with task: spec §5.1 binary — exit 0 = completed, non-zero = died.
-    // A non-zero exit from cmd /c means the CLI itself errored (auth, crash, etc).
-    const isClean = keepAlive ? true : exitCode === 0
+    // Rule: any exit from claude-code/codex/opencode = completed session.
+    // Only custom shell uses exit code 0/non-zero to distinguish success from failure.
+    const isClean = kind !== 'custom' ? true : exitCode === 0
     if (isClean) {
       broadcast({ type: 'agent:completed', agentId })
       if (!isDirect) {
