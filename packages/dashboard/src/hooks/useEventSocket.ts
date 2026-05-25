@@ -52,6 +52,10 @@ export function useEventSocket(serverUrl: string) {
           case 'agent:died':
             store.markAgentDead(msg.agentId)
             break
+          case 'agent:spawn-failed':
+            store.removeAgent(msg.agentId)
+            console.error(`[mc] agent ${msg.agentId} failed to spawn:`, msg.error)
+            break
           case 'agent:removed':
             store.removeAgent(msg.agentId)
             break

@@ -6,12 +6,38 @@ import { broadcast } from '../ws-events.js'
 import { recallContext, recallParentContext, ingestAgentSummary, SUB_TENANTS } from '../hydra.js'
 import { computeContextRichness, incrementCounter } from '../services/agent-health.js'
 import { RegisterAgentSchema, HeartbeatSchema } from '../validators.js'
-import { createWorktree } from '../services/worktree-manager.js'
-import { assignPort, injectPortEnv } from '../services/port-registry.js'
+import { createWorktree, deleteWorktree } from '../services/worktree-manager.js'
+import { assignPort, releasePort, injectPortEnv } from '../services/port-registry.js'
 import { installHooks } from '../services/hook-installer.js'
 import { spawnAgent, killAgent, resizeAgent } from '../services/pty-spawner.js'
+import { simpleGit } from 'simple-git'
 import fs from 'fs/promises'
 import path from 'path'
+
+// Pre-flight: projectPath must be a git repo with at least one commit.
+// Returns null if OK, or a user-facing error string explaining what's wrong.
+async function validateProjectRepo(projectPath: string): Promise<string | null> {
+  try {
+    await fs.access(projectPath)
+  } catch {
+    return `Project path not found: ${projectPath}`
+  }
+
+  const git = simpleGit(projectPath)
+  try {
+    await git.raw(['rev-parse', '--git-dir'])
+  } catch {
+    return `Not a git repository: ${projectPath}. Run "git init" and create at least one commit before spawning an agent here.`
+  }
+
+  try {
+    await git.raw(['rev-parse', 'HEAD'])
+  } catch {
+    return `Repository at ${projectPath} has no commits yet. Run "git commit" at least once before spawning an agent here.`
+  }
+
+  return null
+}
 
 // Always injects HydraDB brain context before agent starts.
 // Queries shared context + prior decisions using the task as query.
@@ -88,25 +114,48 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'projectPath is required' })
     }
 
-    // Validate projectPath exists
-    try {
-      await fs.access(projectPath)
-    } catch {
-      return reply.status(400).send({ error: `Project path not found: ${projectPath}` })
+    const repoError = await validateProjectRepo(projectPath)
+    if (repoError) {
+      return reply.status(400).send({ error: repoError })
     }
 
     const agentId = `agent-${uuidv4()}`
 
     // Spec §3: always create a git worktree branched off the user's project repo.
     // The agent works in this isolated worktree — never in the main working tree.
-    const wtPath = await createWorktree(agentId, task || 'session', projectPath)
+    let wtPath: string
+    try {
+      wtPath = await createWorktree(agentId, task || 'session', projectPath)
+    } catch (err: any) {
+      const msg = err?.message || String(err)
+      console.error(`[spawn] createWorktree failed for ${projectPath}:`, msg)
+      return reply.status(500).send({ error: `Failed to create worktree: ${msg}` })
+    }
 
-    // Assign port + inject into worktree .env
-    const assignedPort = assignPort(agentId)
-    await injectPortEnv(wtPath, assignedPort)
+    let assignedPort: number = 0
+    let portAssigned = false
+    try {
+      // Assign port + inject into worktree .env
+      assignedPort = assignPort(agentId)
+      portAssigned = true
+      await injectPortEnv(wtPath, assignedPort)
 
-    // Install AI hooks into the worktree
-    await installHooks(agentId, kind, wtPath)
+      // Install AI hooks into the worktree
+      await installHooks(agentId, kind, wtPath)
+    } catch (err: any) {
+      const msg = err?.message || String(err)
+      console.error(`[spawn] setup failed for ${agentId}, rolling back:`, msg)
+
+      // Rollback in reverse order. Each step is best-effort and logs but does not throw.
+      if (portAssigned) {
+        try { releasePort(agentId) }
+        catch (e: any) { console.error(`[spawn] rollback releasePort failed:`, e?.message || e) }
+      }
+      try { await deleteWorktree(agentId, projectPath) }
+      catch (e: any) { console.error(`[spawn] rollback deleteWorktree failed:`, e?.message || e) }
+
+      return reply.status(500).send({ error: `Agent setup failed: ${msg}` })
+    }
 
     // Inject HydraDB brain context for all agents (not just children).
     // Populates .mc_context with relevant shared context + prior decisions.
@@ -134,10 +183,23 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     // Broadcast before spawn so the dashboard card appears immediately
     broadcast({ type: 'agent:spawned', agent: newAgent })
 
-    // Spawn PTY inside the worktree — agent works on an isolated branch
-    spawnAgent(agentId, kind, wtPath, task, assignedPort).catch(err => {
-      console.error(`[spawn] PTY failed for ${agentId}:`, err.message)
-      broadcast({ type: 'agent:died', agentId })
+    // Spawn PTY inside the worktree — agent works on an isolated branch.
+    // If pty.spawn itself throws (binary missing, cmd.exe not found), the agent never
+    // existed — fully roll back so the agents map invariant holds: every record
+    // corresponds to a process that ran. The dashboard receives spawn-failed with
+    // the error so the card it just rendered can show why it disappeared.
+    spawnAgent(agentId, kind, wtPath, task, assignedPort).catch(async err => {
+      const msg = err?.message || String(err)
+      console.error(`[spawn] PTY failed for ${agentId}, rolling back:`, msg)
+
+      agents.delete(agentId)
+
+      try { releasePort(agentId) }
+      catch (e: any) { console.error(`[spawn] post-spawn releasePort failed:`, e?.message || e) }
+      try { await deleteWorktree(agentId, projectPath) }
+      catch (e: any) { console.error(`[spawn] post-spawn deleteWorktree failed:`, e?.message || e) }
+
+      broadcast({ type: 'agent:spawn-failed', agentId, error: msg })
     })
 
     return reply.send({ agentId, assignedPort })

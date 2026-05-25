@@ -8,6 +8,7 @@ export type WSEvent =
   | { type: 'agent:registered'; agent: AgentRecord }
   | { type: 'agent:heartbeat'; agentId: string; status: string; task?: string }
   | { type: 'agent:died'; agentId: string }
+  | { type: 'agent:spawn-failed'; agentId: string; error: string }
   | { type: 'agent:removed'; agentId: string }
   | { type: 'agent:completed'; agentId: string }
   | { type: 'agent:ready-to-merge'; agentId: string }
