@@ -22,26 +22,45 @@ function buildSpawn(
   kind: AgentKind,
   task: string
 ): { cmd: string; args: string[]; injectTask: boolean } {
+  const hasTask = task.trim().length > 0
+
   if (IS_WINDOWS) {
     switch (kind) {
       case 'claude-code':
-        return { cmd: 'cmd.exe', args: ['/c', 'claude', task],           injectTask: false }
+        // With task: cmd /c claude "task"
+        // Without:   cmd /c claude  (interactive, user types in terminal)
+        return hasTask
+          ? { cmd: 'cmd.exe', args: ['/c', 'claude', task], injectTask: false }
+          : { cmd: 'cmd.exe', args: ['/c', 'claude'],       injectTask: false }
       case 'codex':
-        return { cmd: 'cmd.exe', args: ['/c', 'codex', task],            injectTask: false }
+        return hasTask
+          ? { cmd: 'cmd.exe', args: ['/c', 'codex', task],  injectTask: false }
+          : { cmd: 'cmd.exe', args: ['/c', 'codex'],        injectTask: false }
       case 'opencode':
-        return { cmd: 'cmd.exe', args: ['/c', 'opencode', 'run', task],  injectTask: false }
+        return hasTask
+          ? { cmd: 'cmd.exe', args: ['/c', 'opencode', 'run', task], injectTask: false }
+          : { cmd: 'cmd.exe', args: ['/c', 'opencode'],              injectTask: false }
       case 'custom':
-        // /k keeps the shell alive after the injected command runs
-        return { cmd: 'cmd.exe', args: ['/k'],                           injectTask: true  }
+        return { cmd: 'cmd.exe', args: ['/k'], injectTask: hasTask }
     }
   }
 
   // Unix
   switch (kind) {
-    case 'claude-code': return { cmd: 'claude',   args: [task],          injectTask: false }
-    case 'codex':       return { cmd: 'codex',    args: [task],          injectTask: false }
-    case 'opencode':    return { cmd: 'opencode', args: ['run', task],   injectTask: false }
-    case 'custom':      return { cmd: 'bash',     args: [],              injectTask: true  }
+    case 'claude-code':
+      return hasTask
+        ? { cmd: 'claude',   args: [task], injectTask: false }
+        : { cmd: 'claude',   args: [],     injectTask: false }
+    case 'codex':
+      return hasTask
+        ? { cmd: 'codex',    args: [task], injectTask: false }
+        : { cmd: 'codex',    args: [],     injectTask: false }
+    case 'opencode':
+      return hasTask
+        ? { cmd: 'opencode', args: ['run', task], injectTask: false }
+        : { cmd: 'opencode', args: [],            injectTask: false }
+    case 'custom':
+      return { cmd: 'bash', args: [], injectTask: hasTask }
   }
 }
 
@@ -78,11 +97,16 @@ export async function spawnAgent(
 
   instance.onExit(({ exitCode }) => {
     ptyInstances.delete(agentId)
-    if (exitCode === 0) {
+
+    // claude-code, codex, and opencode are interactive TUIs that exit via cmd /c on Windows.
+    // They reliably exit with non-zero (e.g. 1) even after a normal completed session.
+    // Treat any exit from these CLIs as completed — the user can review & merge.
+    // Only custom shells distinguish exit 0 (success) from non-zero (failure).
+    if (kind === 'custom' && exitCode !== 0) {
+      broadcast({ type: 'agent:died', agentId })
+    } else {
       broadcast({ type: 'agent:completed', agentId })
       broadcast({ type: 'agent:ready-to-merge', agentId })
-    } else {
-      broadcast({ type: 'agent:died', agentId })
     }
   })
 }

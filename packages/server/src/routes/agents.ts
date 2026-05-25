@@ -29,9 +29,9 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
   // v3: Spawn an agent (creates worktree + PTY)
   fastify.post('/spawn', async (req, reply) => {
-    const { kind, task, name, parentAgentId, projectPath } = req.body as {
+    const { kind, task = '', name, parentAgentId, projectPath } = req.body as {
       kind: AgentKind
-      task: string
+      task?: string
       name: string
       parentAgentId?: string
       projectPath?: string   // absolute path to the user's project; defaults to repo root

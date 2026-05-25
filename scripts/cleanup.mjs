@@ -49,10 +49,15 @@ for (const entry of entries) {
     run(`git branch -D "${branch}"`)
   }
 
-  // Force-remove directory if git didn't
+  // Force-remove directory if git didn't (EPERM can happen if a process still holds a handle)
   if (existsSync(wtPath)) {
-    rmSync(wtPath, { recursive: true, force: true })
-    console.log(`  Force-removed dir: ${wtPath}`)
+    try {
+      rmSync(wtPath, { recursive: true, force: true })
+      console.log(`  Force-removed dir: ${wtPath}`)
+    } catch (e) {
+      console.log(`  Warning: could not remove dir (process may still be running): ${wtPath}`)
+      console.log(`  Run again after stopping any processes in that directory.`)
+    }
   }
 
   removed++
