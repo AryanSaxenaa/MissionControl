@@ -110,7 +110,14 @@ export const useMissionControlStore = create<MissionControlStore>((set, get) => 
       return { agents: m }
     }),
   removeAgent: (id) =>
-    set((s) => { const m = new Map(s.agents); m.delete(id); return { agents: m } }),
+    set((s) => {
+      const m = new Map(s.agents)
+      m.delete(id)
+      return {
+        agents: m,
+        agentsPendingMerge: s.agentsPendingMerge.filter(a => a !== id),
+      }
+    }),
 
   pendingPermissions: [],
   addPermissionRequest: (r) => set((s) => ({ pendingPermissions: [...s.pendingPermissions, r] })),

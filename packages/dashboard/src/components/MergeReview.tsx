@@ -17,30 +17,53 @@ export function MergeReview({ agentId, onClose }: MergeReviewProps) {
   const [data,          setData]          = useState<DiffData | null>(null)
   const [commitMessage, setCommitMessage] = useState('')
   const [loading,       setLoading]       = useState(false)
+  const [error,         setError]         = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`/api/agents/${agentId}/diff`)
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
       .then(setData)
       .catch(() => {})
   }, [agentId])
 
   const merge = async () => {
     setLoading(true)
-    await fetch(`/api/agents/${agentId}/merge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ commitMessage: commitMessage || data?.task }),
-    })
-    setLoading(false)
-    onClose()
+    setError(null)
+    try {
+      const res = await fetch(`/api/agents/${agentId}/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commitMessage: commitMessage || data?.task || 'agent changes' }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body.error ?? `Merge failed (${res.status})`)
+        return
+      }
+      onClose()
+    } catch (e: any) {
+      setError(e?.message ?? 'Network error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const discard = async () => {
     setLoading(true)
-    await fetch(`/api/agents/${agentId}/discard`, { method: 'POST' })
-    setLoading(false)
-    onClose()
+    setError(null)
+    try {
+      const res = await fetch(`/api/agents/${agentId}/discard`, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body.error ?? `Discard failed (${res.status})`)
+        return
+      }
+      onClose()
+    } catch (e: any) {
+      setError(e?.message ?? 'Network error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -81,7 +104,13 @@ export function MergeReview({ agentId, onClose }: MergeReviewProps) {
         </div>
 
         {/* Footer */}
-        <div className="px-7 py-5 border-t border-[#171717] flex items-center gap-3">
+        <div className="px-7 py-5 border-t border-[#171717] flex flex-col gap-3">
+          {error && (
+            <div className="text-xs text-red-400 font-mono bg-red-500/10 border border-red-500/20 px-3 py-2">
+              {error}
+            </div>
+          )}
+          <div className="flex items-center gap-3">
           <input
             value={commitMessage}
             onChange={e => setCommitMessage(e.target.value)}
@@ -104,6 +133,7 @@ export function MergeReview({ agentId, onClose }: MergeReviewProps) {
             <GitMerge size={14} />
             Merge
           </button>
+          </div>
         </div>
       </div>
     </div>
