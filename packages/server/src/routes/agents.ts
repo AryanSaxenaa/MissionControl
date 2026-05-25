@@ -106,7 +106,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     broadcast({ type: 'agent:spawned', agent: newAgent })
 
     // Spawn PTY in the correct directory
-    spawnAgent(agentId, kind, spawnCwd, task, assignedPort).catch(err => {
+    spawnAgent(agentId, kind, spawnCwd, task, assignedPort, !!projectPath).catch(err => {
       console.error(`[spawn] PTY failed for ${agentId}:`, err.message)
       broadcast({ type: 'agent:died', agentId })
     })

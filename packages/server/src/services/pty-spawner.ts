@@ -4,6 +4,10 @@ import { broadcast } from '../ws-events.js'
 
 export const ptyInstances = new Map<string, pty.IPty>()
 
+// Tracks which agents are in Mode A (direct project, no worktree).
+// These should never trigger ready-to-merge.
+export const directModeAgents = new Set<string>()
+
 const IS_WINDOWS = process.platform === 'win32'
 
 /**
@@ -69,8 +73,10 @@ export async function spawnAgent(
   kind: AgentKind,
   worktreePath: string,
   task: string,
-  port: number
+  port: number,
+  isDirectMode = false   // true = Mode A (user's project, no worktree)
 ): Promise<void> {
+  if (isDirectMode) directModeAgents.add(agentId)
   const { cmd, args, injectTask } = buildSpawn(kind, task)
 
   const instance = pty.spawn(cmd, args, {
@@ -97,16 +103,18 @@ export async function spawnAgent(
 
   instance.onExit(({ exitCode }) => {
     ptyInstances.delete(agentId)
+    const isDirect = directModeAgents.has(agentId)
+    directModeAgents.delete(agentId)
 
-    // claude-code, codex, and opencode are interactive TUIs that exit via cmd /c on Windows.
-    // They reliably exit with non-zero (e.g. 1) even after a normal completed session.
-    // Treat any exit from these CLIs as completed — the user can review & merge.
-    // Only custom shells distinguish exit 0 (success) from non-zero (failure).
     if (kind === 'custom' && exitCode !== 0) {
       broadcast({ type: 'agent:died', agentId })
     } else {
       broadcast({ type: 'agent:completed', agentId })
-      broadcast({ type: 'agent:ready-to-merge', agentId })
+      // Only trigger merge review in Mode B (git worktree isolation).
+      // In Mode A (direct project), there is no isolated worktree to diff/merge.
+      if (!isDirect) {
+        broadcast({ type: 'agent:ready-to-merge', agentId })
+      }
     }
   })
 }
