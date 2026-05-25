@@ -8,32 +8,54 @@ export const ptyInstances = new Map<string, pty.IPty>()
 const IS_WINDOWS = process.platform === 'win32'
 
 /**
- * Spec Non-Negotiable #14: Task injected via PTY stdin after prompt detection.
- * Not via CLI flags. Works universally for all agent kinds.
+ * Two spawn modes:
  *
- * Windows: node-pty ConPTY doesn't resolve PATH. We go through cmd.exe.
- *   WITH task:    cmd /c <cli>  — cli runs, task injected via stdin, exits.
- *   WITHOUT task: cmd /k <cli>  — keeps cmd alive for free-form interactive use.
- *   custom:       cmd /k always (interactive shell).
+ * WITH task → non-interactive: pass task via CLI flag so the process exits
+ *   when done. This triggers onExit → agent:completed → "Review & Merge".
+ *   claude-code: `claude -p "<task>"`
+ *   codex:       `codex "<task>"`          (positional arg, exits after run)
+ *   opencode:    `opencode run "<task>"`   (run subcommand, exits after run)
  *
- * There is ONE mode now. Every agent always has a git worktree. The agent
- * works in the worktree. When it exits, Review & Merge is offered.
+ * WITHOUT task → interactive TUI: user types freely. Process stays alive.
+ *   Status stays `active` until user exits the TUI manually. The
+ *   "Review & Merge" button is always visible so the user can trigger
+ *   merge whenever they're satisfied.
+ *
+ * Windows: node-pty ConPTY doesn't resolve PATH — wrap everything in cmd.exe.
+ *   /c = run then exit (used for non-interactive task runs)
+ *   /k = run then keep alive (used for interactive sessions)
  */
-function buildSpawn(kind: AgentKind, hasTask: boolean): { cmd: string; args: string[] } {
+function buildSpawn(kind: AgentKind, task: string): { cmd: string; args: string[] } {
+  const hasTask = task.trim().length > 0
+
   if (IS_WINDOWS) {
-    const flag = (!hasTask || kind === 'custom') ? '/k' : '/c'
+    if (!hasTask || kind === 'custom') {
+      // Interactive / custom shell — stay alive
+      const cli = kind === 'custom' ? '' : kind === 'claude-code' ? 'claude' : kind === 'codex' ? 'codex' : 'opencode'
+      return { cmd: 'cmd.exe', args: kind === 'custom' ? ['/k'] : ['/k', cli] }
+    }
+    // Non-interactive: pass task via CLI flag, process exits when done
     switch (kind) {
-      case 'claude-code': return { cmd: 'cmd.exe', args: [flag, 'claude']   }
-      case 'codex':       return { cmd: 'cmd.exe', args: [flag, 'codex']    }
-      case 'opencode':    return { cmd: 'cmd.exe', args: [flag, 'opencode'] }
-      case 'custom':      return { cmd: 'cmd.exe', args: ['/k']             }
+      case 'claude-code': return { cmd: 'cmd.exe', args: ['/c', 'claude', '-p', task] }
+      case 'codex':       return { cmd: 'cmd.exe', args: ['/c', 'codex',  task] }
+      case 'opencode':    return { cmd: 'cmd.exe', args: ['/c', 'opencode', 'run', task] }
     }
   }
+
+  if (!hasTask || kind === 'custom') {
+    switch (kind) {
+      case 'claude-code': return { cmd: 'claude',   args: [] }
+      case 'codex':       return { cmd: 'codex',    args: [] }
+      case 'opencode':    return { cmd: 'opencode', args: [] }
+      case 'custom':      return { cmd: 'bash',     args: [] }
+    }
+  }
+  // Non-interactive on Linux/Mac
   switch (kind) {
-    case 'claude-code': return { cmd: 'claude',   args: [] }
-    case 'codex':       return { cmd: 'codex',    args: [] }
-    case 'opencode':    return { cmd: 'opencode', args: [] }
-    case 'custom':      return { cmd: 'bash',     args: [] }
+    case 'claude-code': return { cmd: 'claude',   args: ['-p', task] }
+    case 'codex':       return { cmd: 'codex',    args: [task] }
+    case 'opencode':    return { cmd: 'opencode', args: ['run', task] }
+    default:            return { cmd: 'bash',     args: [] }
   }
 }
 
@@ -45,7 +67,7 @@ export async function spawnAgent(
   port: number
 ): Promise<void> {
   const hasTask        = task.trim().length > 0
-  const { cmd, args }  = buildSpawn(kind, hasTask)
+  const { cmd, args }  = buildSpawn(kind, task)
 
   const instance = pty.spawn(cmd, args, {
     name: 'xterm-256color',
@@ -65,13 +87,10 @@ export async function spawnAgent(
   // Buffer all output for playback when a new WebSocket connects mid-session
   instance.onData((data: string) => appendBuffer(agentId, data))
 
-  // Spec NNeg #14: inject task via PTY stdin after prompt detection.
-  if (hasTask || kind === 'custom') {
+  // Interactive custom shells: wait for prompt before injecting nothing
+  // (kept so custom agents get their PTY warmed up before user types)
+  if (!hasTask && kind === 'custom') {
     await waitForPrompt(instance)
-    if (hasTask) {
-      await new Promise(r => setTimeout(r, 200))
-      instance.write(task + '\r')
-    }
   }
 
   instance.onExit(({ exitCode }) => {
