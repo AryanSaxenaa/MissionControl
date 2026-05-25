@@ -1,29 +1,44 @@
 import { simpleGit } from 'simple-git'
 import path from 'path'
-import fs from 'fs/promises'
-import { fileURLToPath } from 'url'
 
-// Resolve repo root relative to this file (packages/server/src/services/ → ../../../../)
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const REPO_ROOT = path.resolve(__dirname, '../../../../')
-const TREES_DIR = path.join(REPO_ROOT, '.trees')
+/**
+ * Spec §3, Non-Negotiable #4:
+ * "Git worktree created before agent spawns. Agent never runs in the main working tree."
+ *
+ * Every agent gets an isolated git worktree branched off the USER'S PROJECT repo.
+ * The projectRoot parameter is the absolute path to the user's project (the git repo
+ * they want the agent to work on). Worktrees are created inside projectRoot/.trees/.
+ *
+ * There is ONE mode. No "Mode A / Mode B". Always a worktree.
+ */
 
-const git = simpleGit(REPO_ROOT)
-
-export async function createWorktree(agentId: string, taskName: string): Promise<string> {
-  const safeName = taskName.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40)
-  const branchName = `agent/${agentId}-${safeName}`
-  const worktreePath = path.join(TREES_DIR, agentId)
-
-  await git.raw(['worktree', 'add', '-b', branchName, worktreePath, 'HEAD'])
-  await git.raw(['worktree', 'lock', '--reason', `MissionControl agent ${agentId}`, worktreePath])
-
-  return worktreePath
+function getRepoGit(projectRoot: string) {
+  return simpleGit(projectRoot)
 }
 
-export async function getWorktreeDiff(agentId: string): Promise<string> {
-  const worktreePath = path.join(TREES_DIR, agentId)
-  const worktreeGit = simpleGit(worktreePath)
+function worktreePath(projectRoot: string, agentId: string): string {
+  return path.join(projectRoot, '.trees', agentId)
+}
+
+export async function createWorktree(
+  agentId: string,
+  taskName: string,
+  projectRoot: string
+): Promise<string> {
+  const git     = getRepoGit(projectRoot)
+  const safeName  = taskName.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40) || 'session'
+  const branchName = `agent/${agentId}-${safeName}`
+  const wtPath  = worktreePath(projectRoot, agentId)
+
+  await git.raw(['worktree', 'add', '-b', branchName, wtPath, 'HEAD'])
+  await git.raw(['worktree', 'lock', '--reason', `MissionControl agent ${agentId}`, wtPath])
+
+  return wtPath
+}
+
+export async function getWorktreeDiff(agentId: string, projectRoot: string): Promise<string> {
+  const wtPath     = worktreePath(projectRoot, agentId)
+  const worktreeGit = simpleGit(wtPath)
 
   await worktreeGit.add('.')
   const diff = await worktreeGit.diff(['--cached', 'HEAD'])
@@ -31,39 +46,39 @@ export async function getWorktreeDiff(agentId: string): Promise<string> {
   return diff
 }
 
-export async function mergeWorktree(agentId: string, commitMessage: string): Promise<void> {
-  const worktreePath = path.join(TREES_DIR, agentId)
-  const worktreeGit = simpleGit(worktreePath)
+export async function mergeWorktree(
+  agentId: string,
+  commitMessage: string,
+  projectRoot: string
+): Promise<void> {
+  const git      = getRepoGit(projectRoot)
+  const wtPath   = worktreePath(projectRoot, agentId)
+  const worktreeGit = simpleGit(wtPath)
 
-  // Resolve the actual branch name from the worktree (avoids hardcoding the task-slug suffix)
-  const branchResult = await worktreeGit.revparse(['--abbrev-ref', 'HEAD'])
-  const branchName = branchResult.trim()
+  const branchName = (await worktreeGit.revparse(['--abbrev-ref', 'HEAD'])).trim()
 
   await worktreeGit.add('.')
-  // Only commit if there are staged changes; an empty commit would fail
   const status = await worktreeGit.status()
   if (status.staged.length > 0 || status.files.length > 0) {
     await worktreeGit.commit(commitMessage)
   }
 
   await git.merge([branchName, '--no-ff', '-m', `merge: ${commitMessage}`])
-
-  await deleteWorktree(agentId)
+  await deleteWorktree(agentId, projectRoot)
 }
 
-export async function deleteWorktree(agentId: string): Promise<void> {
-  const worktreePath = path.join(TREES_DIR, agentId)
+export async function deleteWorktree(agentId: string, projectRoot: string): Promise<void> {
+  const git    = getRepoGit(projectRoot)
+  const wtPath = worktreePath(projectRoot, agentId)
 
-  // Resolve the actual branch name before removing the worktree
-  // (createWorktree names branches agent/{id}-{task-slug}, not just agent/{id})
   let branchName: string | null = null
   try {
-    const worktreeGit = simpleGit(worktreePath)
+    const worktreeGit = simpleGit(wtPath)
     branchName = (await worktreeGit.revparse(['--abbrev-ref', 'HEAD'])).trim()
-  } catch { /* worktree may already be gone */ }
+  } catch { /* worktree may already be removed */ }
 
-  await git.raw(['worktree', 'unlock', worktreePath]).catch(() => {})
-  await git.raw(['worktree', 'remove', '--force', worktreePath]).catch(() => {})
+  await git.raw(['worktree', 'unlock', wtPath]).catch(() => {})
+  await git.raw(['worktree', 'remove', '--force', wtPath]).catch(() => {})
 
   if (branchName && branchName !== 'HEAD') {
     await git.raw(['branch', '-D', branchName]).catch(() => {})

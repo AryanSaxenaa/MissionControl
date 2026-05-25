@@ -13,8 +13,10 @@ export async function mergeRoutes(app: FastifyInstance) {
     const agent = agents.get(id)
     if (!agent) return reply.code(404).send({ error: 'agent not found' })
 
+    const projectRoot = agent.projectPath!
+
     const [diff, context] = await Promise.all([
-      getWorktreeDiff(id).catch(() => ''),
+      getWorktreeDiff(id, projectRoot).catch(() => ''),
       recallContext(`what did agent ${id} work on`, `agent-${id}`).catch(() => ({ chunks: [] })),
     ])
 
@@ -30,8 +32,10 @@ export async function mergeRoutes(app: FastifyInstance) {
   app.post('/api/agents/:id/merge', async (req, reply) => {
     const { id } = req.params as { id: string }
     const { commitMessage } = req.body as { commitMessage: string }
+    const agent = agents.get(id)
+    if (!agent) return reply.code(404).send({ error: 'agent not found' })
 
-    await mergeWorktree(id, commitMessage)
+    await mergeWorktree(id, commitMessage, agent.projectPath!)
     releasePort(id)
     agents.delete(id)
     broadcast({ type: 'agent:removed', agentId: id })
@@ -42,8 +46,10 @@ export async function mergeRoutes(app: FastifyInstance) {
   // Discard worktree without merging
   app.post('/api/agents/:id/discard', async (req, reply) => {
     const { id } = req.params as { id: string }
+    const agent = agents.get(id)
+    if (!agent) return reply.code(404).send({ error: 'agent not found' })
 
-    await deleteWorktree(id)
+    await deleteWorktree(id, agent.projectPath!)
     releasePort(id)
     agents.delete(id)
     broadcast({ type: 'agent:removed', agentId: id })

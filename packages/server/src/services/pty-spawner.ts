@@ -4,38 +4,35 @@ import { broadcast } from '../ws-events.js'
 
 export const ptyInstances = new Map<string, pty.IPty>()
 
-// Tracks which agents are in Mode A (direct project, no worktree).
-// These should never trigger ready-to-merge.
-export const directModeAgents = new Set<string>()
-
 const IS_WINDOWS = process.platform === 'win32'
 
 /**
  * Spec Non-Negotiable #14: Task injected via PTY stdin after prompt detection.
+ * Not via CLI flags. Works universally for all agent kinds.
  *
- * Windows spawning strategy:
- *   WITH task:    cmd /c <cli>  — cli runs, stdin injection works, exits when done.
- *                                 Exit code from cli propagates: 0=completed, else=died.
- *   WITHOUT task: cmd /k <cli>  — cmd stays alive after cli exits so the user can
- *                                 interact freely. When user closes it, cmd /k exits 0.
- *   custom:       cmd /k always — interactive shell, task injected as keystrokes.
+ * Windows: node-pty ConPTY doesn't resolve PATH. We go through cmd.exe.
+ *   WITH task:    cmd /c <cli>  — cli runs, task injected via stdin, exits.
+ *   WITHOUT task: cmd /k <cli>  — keeps cmd alive for free-form interactive use.
+ *   custom:       cmd /k always (interactive shell).
+ *
+ * There is ONE mode now. Every agent always has a git worktree. The agent
+ * works in the worktree. When it exits, Review & Merge is offered.
  */
-function buildSpawn(kind: AgentKind, hasTask: boolean): { cmd: string; args: string[]; keepAlive: boolean } {
+function buildSpawn(kind: AgentKind, hasTask: boolean): { cmd: string; args: string[] } {
   if (IS_WINDOWS) {
     const flag = (!hasTask || kind === 'custom') ? '/k' : '/c'
-    const keepAlive = flag === '/k'
     switch (kind) {
-      case 'claude-code': return { cmd: 'cmd.exe', args: [flag, 'claude'],   keepAlive }
-      case 'codex':       return { cmd: 'cmd.exe', args: [flag, 'codex'],    keepAlive }
-      case 'opencode':    return { cmd: 'cmd.exe', args: [flag, 'opencode'], keepAlive }
-      case 'custom':      return { cmd: 'cmd.exe', args: ['/k'],             keepAlive: true }
+      case 'claude-code': return { cmd: 'cmd.exe', args: [flag, 'claude']   }
+      case 'codex':       return { cmd: 'cmd.exe', args: [flag, 'codex']    }
+      case 'opencode':    return { cmd: 'cmd.exe', args: [flag, 'opencode'] }
+      case 'custom':      return { cmd: 'cmd.exe', args: ['/k']             }
     }
   }
-  // Unix — always spawn CLI directly, no wrapper needed
-  return {
-    cmd:       kind === 'custom' ? 'bash' : kind === 'claude-code' ? 'claude' : kind,
-    args:      [],
-    keepAlive: !hasTask,   // no task = interactive = any exit is "completed"
+  switch (kind) {
+    case 'claude-code': return { cmd: 'claude',   args: [] }
+    case 'codex':       return { cmd: 'codex',    args: [] }
+    case 'opencode':    return { cmd: 'opencode', args: [] }
+    case 'custom':      return { cmd: 'bash',     args: [] }
   }
 }
 
@@ -44,12 +41,10 @@ export async function spawnAgent(
   kind: AgentKind,
   worktreePath: string,
   task: string,
-  port: number,
-  isDirectMode = false   // true = Mode A (user's project, no worktree)
+  port: number
 ): Promise<void> {
-  if (isDirectMode) directModeAgents.add(agentId)
-  const hasTask = task.trim().length > 0
-  const { cmd, args, keepAlive } = buildSpawn(kind, hasTask)
+  const hasTask        = task.trim().length > 0
+  const { cmd, args }  = buildSpawn(kind, hasTask)
 
   const instance = pty.spawn(cmd, args, {
     name: 'xterm-256color',
@@ -66,10 +61,7 @@ export async function spawnAgent(
 
   ptyInstances.set(agentId, instance)
 
-  // Spec Non-Negotiable #14: inject task via PTY stdin after prompt detection.
-  // When task is non-empty: wait for prompt then write it as keystrokes.
-  // When task is empty and custom shell: wait for prompt (gives user a clean prompt).
-  // When task is empty and AI CLI: no injection — CLI is already in interactive mode.
+  // Spec NNeg #14: inject task via PTY stdin after prompt detection.
   if (hasTask || kind === 'custom') {
     await waitForPrompt(instance)
     if (hasTask) {
@@ -80,43 +72,32 @@ export async function spawnAgent(
 
   instance.onExit(({ exitCode }) => {
     ptyInstances.delete(agentId)
-    const isDirect = directModeAgents.has(agentId)
-    directModeAgents.delete(agentId)
 
     if (kind === 'custom') {
-      // Custom shell: exit 0 = user's script finished cleanly → completed + maybe merge.
-      // Non-zero = script error → died.
+      // Shell scripts: exit 0 = success, non-zero = error.
       if (exitCode === 0) {
         broadcast({ type: 'agent:completed', agentId })
-        if (!isDirect) broadcast({ type: 'agent:ready-to-merge', agentId })
+        broadcast({ type: 'agent:ready-to-merge', agentId })
       } else {
         broadcast({ type: 'agent:died', agentId })
       }
     } else {
-      // AI TUIs (claude-code, codex, opencode): the user closes the CLI when they're done.
-      // Exit codes are meaningless — these tools always exit non-zero.
-      // Just remove the card from the dashboard. No "failed", no "completed".
-      // If the agent was in a git worktree (Mode B), show the merge review first.
-      if (!isDirect) {
-        broadcast({ type: 'agent:completed', agentId })
-        broadcast({ type: 'agent:ready-to-merge', agentId })
-      } else {
-        // Mode A (direct project): just remove the card silently.
-        broadcast({ type: 'agent:removed', agentId })
-      }
+      // AI TUIs always exit non-zero. Any exit = session closed by user.
+      // Always offer Review & Merge — the worktree has the agent's changes.
+      broadcast({ type: 'agent:completed', agentId })
+      broadcast({ type: 'agent:ready-to-merge', agentId })
     }
   })
 }
 
 /**
- * Wait up to 3s for a prompt character ($, >, %, ❯) to appear in the PTY output.
- * Used for all CLIs before injecting the task via stdin (spec §3 step 6, NNeg #14).
+ * Wait up to 5s for a prompt character to appear.
+ * Spec §3: "waits for prompt to appear" before injecting task.
  */
 function waitForPrompt(instance: pty.IPty): Promise<void> {
   return new Promise((resolve) => {
     const timeout    = setTimeout(resolve, 5000)
     const disposable = instance.onData((data: string) => {
-      // Standard shells: $ > %   Claude Code: ❯   Codex/OpenCode: > or similar
       if (data.includes('$') || data.includes('>') || data.includes('%') || data.includes('❯')) {
         clearTimeout(timeout)
         disposable.dispose()

@@ -27,61 +27,44 @@ async function inheritParentContext(
 
 export default async function agentRoutes(fastify: FastifyInstance) {
 
-  // v3: Spawn an agent (creates worktree + PTY)
+  // v3: Spawn an agent — always creates a git worktree in the user's project (spec §3)
   fastify.post('/spawn', async (req, reply) => {
     const { kind, task = '', name, parentAgentId, projectPath } = req.body as {
       kind: AgentKind
       task?: string
       name: string
       parentAgentId?: string
-      projectPath?: string   // absolute path to the user's project; defaults to repo root
+      projectPath: string   // required: absolute path to the user's git repo
     }
 
-    // Validate projectPath if provided
-    if (projectPath) {
-      try {
-        await fs.access(projectPath)
-      } catch {
-        return reply.status(400).send({ error: `Project path not found: ${projectPath}` })
-      }
+    if (!projectPath) {
+      return reply.status(400).send({ error: 'projectPath is required' })
+    }
+
+    // Validate projectPath exists
+    try {
+      await fs.access(projectPath)
+    } catch {
+      return reply.status(400).send({ error: `Project path not found: ${projectPath}` })
     }
 
     const agentId = `agent-${uuidv4()}`
 
-    // Two modes:
-    //
-    // A) projectPath provided → agent works directly in the user's project.
-    //    No git worktree needed. Hooks installed into projectPath.
-    //    spawnCwd = projectPath.
-    //
-    // B) no projectPath → git-isolated mode. Worktree branched off MC repo.
-    //    Hooks installed into worktree. spawnCwd = worktreePath.
-    //    (Legacy/advanced usage — useful for working on the MC repo itself.)
+    // Spec §3: always create a git worktree branched off the user's project repo.
+    // The agent works in this isolated worktree — never in the main working tree.
+    const wtPath = await createWorktree(agentId, task || 'session', projectPath)
 
-    let worktreePath: string
-    let spawnCwd: string
-
-    if (projectPath) {
-      // Mode A — direct project mode, no worktree
-      worktreePath = projectPath   // stored for record-keeping; no git worktree created
-      spawnCwd     = projectPath
-    } else {
-      // Mode B — git worktree isolation
-      worktreePath = await createWorktree(agentId, task || 'session')
-      spawnCwd     = worktreePath
-    }
-
-    // Assign port + inject into project .env
+    // Assign port + inject into worktree .env
     const assignedPort = assignPort(agentId)
-    await injectPortEnv(spawnCwd, assignedPort)
+    await injectPortEnv(wtPath, assignedPort)
 
-    // Install AI hooks into the directory the agent will work in
-    await installHooks(agentId, kind, spawnCwd)
+    // Install AI hooks into the worktree
+    await installHooks(agentId, kind, wtPath)
 
     // Inherit parent context if applicable
     if (parentAgentId) {
       try {
-        await inheritParentContext(agentId, parentAgentId, path.join(spawnCwd, '.mc_context'))
+        await inheritParentContext(agentId, parentAgentId, path.join(wtPath, '.mc_context'))
       } catch { /* non-fatal */ }
     }
 
@@ -96,17 +79,17 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       contextRichness: 0,
       parentAgentId,
       assignedPort,
-      worktreePath,
+      worktreePath: wtPath,
       currentTask: task,
       projectPath,
     }
     agents.set(agentId, newAgent)
 
-    // Broadcast before spawn so dashboard shows the card immediately
+    // Broadcast before spawn so the dashboard card appears immediately
     broadcast({ type: 'agent:spawned', agent: newAgent })
 
-    // Spawn PTY in the correct directory
-    spawnAgent(agentId, kind, spawnCwd, task, assignedPort, !!projectPath).catch(err => {
+    // Spawn PTY inside the worktree — agent works on an isolated branch
+    spawnAgent(agentId, kind, wtPath, task, assignedPort).catch(err => {
       console.error(`[spawn] PTY failed for ${agentId}:`, err.message)
       broadcast({ type: 'agent:died', agentId })
     })
