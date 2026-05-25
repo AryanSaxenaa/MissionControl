@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 
 type AgentKind = 'claude-code' | 'codex' | 'opencode' | 'custom'
@@ -21,6 +21,16 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
   const [projectPath, setProjectPath] = useState('')
   const [loading,     setLoading]     = useState(false)
   const [error,       setError]       = useState('')
+
+  // Prefill projectPath with the server's cwd so first-time users don't get a 400.
+  useEffect(() => {
+    fetch('/api/server-info')
+      .then(r => r.json())
+      .then((info: { cwd: string }) => {
+        setProjectPath(prev => prev || info.cwd)
+      })
+      .catch(() => {})
+  }, [])
 
   const spawn = async () => {
     if (!projectPath.trim()) { setError('Project path is required'); return }

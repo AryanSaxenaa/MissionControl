@@ -64,6 +64,12 @@ fastify.get('/api/status', async () => ({
   uptime: process.uptime(),
 }))
 
+// Returns the server's working directory so the dashboard can prefill the projectPath field.
+fastify.get('/api/server-info', async () => ({
+  cwd: process.cwd(),
+  platform: process.platform,
+}))
+
 // HydraDB memory stats — surfaced in the dashboard status bar
 fastify.get('/api/memory/stats', async (req, reply) => {
   try {

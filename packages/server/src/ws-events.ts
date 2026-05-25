@@ -17,7 +17,7 @@ export type WSEvent =
   | { type: 'intent:updated'; intentId: string; status: IntentRecord['status'] }
   | { type: 'conflict:detected'; conflict: ConflictResult }
   | { type: 'conflict:resolved'; conflictId: string; resolution: string }
-  | { type: 'context:ingested'; sourceId: string; agentId: string; scope: string; summary?: string }
+  | { type: 'context:ingested'; agentId: string }
   | { type: 'decision:recorded'; sourceId: string; agentId: string; summary: string }
   | { type: 'failure:recorded'; sourceId: string; agentId: string; target: string; errorType: string }
   | { type: 'graph:snapshot'; superNodes: any[] }

@@ -31,6 +31,16 @@ export function useEventSocket(serverUrl: string) {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
+
+        // Record timeline event for most message types
+        if (['agent:spawned','agent:registered','agent:died','agent:completed','agent:heartbeat','intent:declared','decision:recorded','failure:recorded'].includes(msg.type)) {
+          store.pushActivityEvent({
+            timestamp: Date.now(),
+            type: msg.type as any,
+            agentId: msg.agentId ?? msg.agent?.id ?? '',
+          })
+        }
+
         switch (msg.type) {
           case 'agent:spawned':
           case 'agent:registered':
@@ -85,7 +95,7 @@ export function useEventSocket(serverUrl: string) {
             store.setGraphData(msg)
             break
           case 'context:ingested':
-            // Server pushes graph:snapshot after ingest — no client-side poll needed
+            store.bumpContextIngest()
             break
         }
       } catch (e) {

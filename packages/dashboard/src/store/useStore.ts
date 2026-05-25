@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AgentRecord, IntentRecord, ConflictResult, GraphData, DecisionItem, FailureItem } from '@missioncontrol/types'
+import type { AgentRecord, IntentRecord, ConflictResult, GraphData, DecisionItem, FailureItem, TimelineEvent } from '@missioncontrol/types'
 
 export interface PermissionRequest {
   requestId: string
@@ -52,9 +52,17 @@ interface MissionControlStore {
   failures: FailureItem[]
   addFailure: (f: FailureItem) => void
 
+  // Timeline
+  activityEvents: TimelineEvent[]
+  pushActivityEvent: (e: TimelineEvent) => void
+
   // Graph
   graphData: GraphData | null
   setGraphData: (data: GraphData | null) => void
+
+  // Context ingest counter — incremented each time an agent writes to HydraDB
+  lastContextIngest: number
+  bumpContextIngest: () => void
 
   // UI
   activeView: 'fleet' | 'graph' | 'decisions' | 'conflicts' | 'failures'
@@ -152,8 +160,15 @@ export const useMissionControlStore = create<MissionControlStore>((set, get) => 
   failures: [],
   addFailure: (f) => set((s) => ({ failures: [f, ...s.failures].slice(0, 500) })),
 
+  activityEvents: [],
+  pushActivityEvent: (e) =>
+    set((s) => ({ activityEvents: [...s.activityEvents, e].slice(-1000) })),
+
   graphData: null,
   setGraphData: (data) => set({ graphData: data }),
+
+  lastContextIngest: 0,
+  bumpContextIngest: () => set((s) => ({ lastContextIngest: s.lastContextIngest + 1 })),
 
   activeView: 'fleet',
   setView: (v) => set({ activeView: v }),

@@ -4,6 +4,7 @@ import { useMissionControlStore } from '../store/useStore'
 import { AgentPane } from '../components/AgentPane'
 import { NewAgentDialog } from '../components/NewAgentDialog'
 import { MergeReview } from '../components/MergeReview'
+import AgentTimeline from '../components/AgentTimeline'
 
 // 7×7 pixel icon for empty state
 const EMPTY_CELLS = [3,9,10,11,15,16,17,21,22,23,24,25,29,30,31,37,38,39,45]
@@ -58,6 +59,9 @@ export default function AgentFleet() {
           </div>
         </div>
       )}
+
+      {/* Activity timeline */}
+      <AgentTimeline />
 
       {/* Agent grid */}
       {agents.length > 0 && (

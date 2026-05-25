@@ -26,10 +26,13 @@ const sessionIntents = new Map<string, string>()
 export async function hooksRoutes(app: FastifyInstance) {
 
   // Register session → agent mapping (called by each agent CLI on startup)
+  // agentId comes from body (OpenCode plugin) OR from ?agentId= query param (CC/Codex hook URLs)
   app.post('/hooks/session-start', async (req, reply) => {
-    const body = req.body as { session_id?: string; agentId?: string }
-    if (body.session_id && body.agentId) {
-      sessionToAgent.set(body.session_id, body.agentId)
+    const body         = req.body as { session_id?: string; agentId?: string }
+    const agentIdQuery = (req.query as Record<string, string>).agentId
+    const agentId      = body.agentId ?? agentIdQuery
+    if (body.session_id && agentId) {
+      sessionToAgent.set(body.session_id, agentId)
     }
     return reply.send({ ok: true })
   })
@@ -54,7 +57,8 @@ export async function hooksRoutes(app: FastifyInstance) {
       return reply.send({})
     }
 
-    const agentId = sessionToAgent.get(session_id)
+    const agentIdQuery = (req.query as Record<string, string>).agentId
+    const agentId = sessionToAgent.get(session_id) ?? agentIdQuery
     if (!agentId) return reply.send({})
 
     const target = extractTarget(tool_input)
@@ -110,7 +114,8 @@ export async function hooksRoutes(app: FastifyInstance) {
 
     if (!WRITE_TOOLS.includes(tool_name)) return reply.send({})
 
-    const agentId = sessionToAgent.get(session_id)
+    const agentIdQuery = (req.query as Record<string, string>).agentId
+    const agentId = sessionToAgent.get(session_id) ?? agentIdQuery
     if (!agentId) return reply.send({})
 
     // Complete the pending intent
@@ -135,6 +140,8 @@ export async function hooksRoutes(app: FastifyInstance) {
       scope: target,
       tags: ['modification', tool_name.toLowerCase()],
       confidence: 0.9,
+    }).then(() => {
+      broadcast({ type: 'context:ingested', agentId })
     }).catch(() => {})
 
     // 2. Auto-ingest a decision record into HydraDB when a file is written.
@@ -191,7 +198,8 @@ export async function hooksRoutes(app: FastifyInstance) {
     const body = req.body as HookPayload
     const { session_id, tool_name, tool_input } = body
 
-    const agentId = sessionToAgent.get(session_id)
+    const agentIdQuery = (req.query as Record<string, string>).agentId
+    const agentId = sessionToAgent.get(session_id) ?? agentIdQuery
     if (!agentId) return reply.send({ hookSpecificOutput: { permissionDecision: 'allow' } })
 
     const requestId = `perm-${Date.now()}`

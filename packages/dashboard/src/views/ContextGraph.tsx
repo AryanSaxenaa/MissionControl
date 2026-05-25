@@ -20,12 +20,14 @@ function tenantColor(tenant: string): string {
 }
 
 export default function ContextGraph() {
-  const data   = useMissionControlStore(s => s.graphData)
+  const data              = useMissionControlStore(s => s.graphData)
+  const lastContextIngest = useMissionControlStore(s => s.lastContextIngest)
   const svgRef = useRef<SVGSVGElement>(null)
   const [entries, setEntries] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(false)
 
-  // Fetch actual HydraDB source metadata for the sidebar list
+  // Fetch actual HydraDB source metadata for the sidebar list.
+  // Re-fetches when lastContextIngest increments (i.e. after any agent write).
   useEffect(() => {
     setLoading(true)
     fetch('/api/memory/stats')
@@ -38,7 +40,7 @@ export default function ContextGraph() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [data])  // re-fetch when graph data updates (i.e. after context ingest)
+  }, [lastContextIngest])
 
   useEffect(() => {
     if (!svgRef.current) return
@@ -123,7 +125,7 @@ export default function ContextGraph() {
     })
 
     return () => { simulation.stop() }
-  }, [data, entries])
+  }, [data, entries, lastContextIngest])
 
   const byTenant = entries.reduce<Record<string, number>>((acc, e) => {
     const t = e.sub_tenant_id ?? e.metadata?.sub_tenant_id ?? 'shared'

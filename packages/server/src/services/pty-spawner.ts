@@ -1,6 +1,7 @@
 import * as pty from 'node-pty'
 import type { AgentKind } from '@missioncontrol/types'
 import { broadcast } from '../ws-events.js'
+import { appendBuffer, clearBuffer } from '../pty-buffer.js'
 
 export const ptyInstances = new Map<string, pty.IPty>()
 
@@ -61,6 +62,9 @@ export async function spawnAgent(
 
   ptyInstances.set(agentId, instance)
 
+  // Buffer all output for playback when a new WebSocket connects mid-session
+  instance.onData((data: string) => appendBuffer(agentId, data))
+
   // Spec NNeg #14: inject task via PTY stdin after prompt detection.
   if (hasTask || kind === 'custom') {
     await waitForPrompt(instance)
@@ -72,6 +76,7 @@ export async function spawnAgent(
 
   instance.onExit(({ exitCode }) => {
     ptyInstances.delete(agentId)
+    clearBuffer(agentId)
 
     if (kind === 'custom') {
       // Shell scripts: exit 0 = success, non-zero = error.

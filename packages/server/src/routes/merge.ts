@@ -17,7 +17,7 @@ export async function mergeRoutes(app: FastifyInstance) {
 
     const [diff, context] = await Promise.all([
       getWorktreeDiff(id, projectRoot).catch(() => ''),
-      recallContext(`what did agent ${id} work on`, `agent-${id}`).catch(() => ({ chunks: [] })),
+      recallContext(agent.currentTask || `agent ${id}`, 'shared').catch(() => ({ chunks: [] })),
     ])
 
     return reply.send({

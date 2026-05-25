@@ -56,3 +56,4 @@ yarn.lock
 # Tool caches
 .commandcode/
 .firecrawl/
+.codex/

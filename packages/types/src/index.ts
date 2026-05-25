@@ -63,6 +63,14 @@ export interface FailureItem {
   createdAt: number
 }
 
+export type TimelineEventType = 'agent:spawned' | 'agent:completed' | 'agent:died' | 'agent:heartbeat' | 'intent:declared' | 'decision:recorded' | 'failure:recorded'
+
+export interface TimelineEvent {
+  timestamp: number
+  type: TimelineEventType
+  agentId: string
+}
+
 // Hook payload shape for Claude Code and Codex CLI HTTP hooks
 export interface HookPayload {
   session_id: string

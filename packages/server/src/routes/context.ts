@@ -19,7 +19,7 @@ export default async function contextRoutes(fastify: FastifyInstance) {
     })
     incrementCounter(body.agentId, 'contextWrote')
 
-    broadcast({ type: 'context:ingested', sourceId, agentId: body.agentId, scope: body.scope, summary: body.content.slice(0, 200) })
+    broadcast({ type: 'context:ingested', agentId: body.agentId })
 
     // Push updated graph snapshot to all clients (avoids N client fetches)
     getGraphData().then(({ superNodes, sources }) => {
