@@ -1,20 +1,18 @@
 import type { HydraDB } from '@hydradb/sdk'
-import { getGraphSuperNodes, listSources } from '../hydra.js'
+import { getGraphSuperNodes } from '../hydra.js'
 
+// Sources (decisions/failures) are built from in-memory ring buffers in index.ts
+// because ingestMemory() creates HydraDB memories, not document sources.
+// listData() always returns empty — don't call it here.
 export async function getGraphData() {
   let superNodes: HydraDB.SuperNodeItem[] = []
-  let sources: HydraDB.SourceInfo[] = []
 
   try {
-    const [superRes, sourcesRes] = await Promise.all([
-      getGraphSuperNodes(),
-      listSources(),
-    ])
+    const superRes = await getGraphSuperNodes()
     superNodes = superRes.super_nodes ?? []
-    sources = (sourcesRes as any).sources ?? (sourcesRes as any).items ?? []
   } catch (e) {
-    console.error('[graph] failed to fetch graph data:', (e as Error).message)
+    console.error('[graph] getSuperNodes failed:', (e as Error).message)
   }
 
-  return { superNodes, sources }
+  return { superNodes }
 }

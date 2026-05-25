@@ -95,8 +95,43 @@ export async function installHooks(
     const relativePluginPath = path.relative(worktreePath, pluginPkgPath)
     try {
       await execAsync(`npm install "${relativePluginPath}"`, { cwd: worktreePath })
-    } catch {
-      // Non-fatal — agent can still work without the plugin
+    } catch (e: any) {
+      console.error(`[hooks] opencode plugin install failed for ${agentId}:`, e?.message || e)
     }
+  } else if (kind === 'custom') {
+    // Custom kind = generic shell. We don't know which CLI the user will run.
+    // Install configs for all three known agents so whichever one they invoke
+    // inside the worktree picks up our hooks automatically. Also drop a NOTE
+    // explaining what coverage they have.
+    const claudeDir = path.join(worktreePath, '.claude')
+    const codexDir  = path.join(worktreePath, '.codex')
+    await Promise.all([
+      fs.mkdir(claudeDir, { recursive: true }),
+      fs.mkdir(codexDir,  { recursive: true }),
+    ])
+    await Promise.all([
+      fs.writeFile(
+        path.join(claudeDir, 'settings.json'),
+        JSON.stringify(buildClaudeHookConfig(serverUrl, agentId), null, 2)
+      ),
+      fs.writeFile(
+        path.join(codexDir, 'hooks.json'),
+        JSON.stringify(buildCodexHookConfig(serverUrl, agentId), null, 2)
+      ),
+      fs.writeFile(
+        path.join(worktreePath, 'opencode.json'),
+        JSON.stringify(buildOpenCodeConfig(serverUrl, agentId), null, 2)
+      ),
+      fs.writeFile(
+        path.join(worktreePath, '.mc_note.md'),
+        `# MissionControl — custom agent\n\n` +
+        `This worktree was spawned as a 'custom' (generic shell) agent.\n` +
+        `Hook configs were pre-installed for Claude Code, Codex, and OpenCode,\n` +
+        `so any of those CLIs you launch from here will report to MissionControl.\n` +
+        `Shells like plain bash/cmd cannot be observed — runs in a raw shell\n` +
+        `(direct file edits via 'echo > file', etc.) are invisible to conflict\n` +
+        `detection and the Decision Log.\n`
+      ),
+    ])
   }
 }

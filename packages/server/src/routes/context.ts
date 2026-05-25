@@ -22,11 +22,11 @@ export default async function contextRoutes(fastify: FastifyInstance) {
     broadcast({ type: 'context:ingested', agentId: body.agentId })
 
     // Push updated graph snapshot to all clients (avoids N client fetches)
-    getGraphData().then(({ superNodes, sources }) => {
+    getGraphData().then(({ superNodes }) => {
       broadcast({
         type: 'graph:snapshot',
         superNodes,
-        sources: sources.slice(0, 200),
+        sources: [],
         activeAgents: [...agents.values()],
         activeIntents: [...activeIntents.values()],
       } as any)

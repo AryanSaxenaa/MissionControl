@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import type { HookPayload } from '@missioncontrol/types'
 import { detectConflicts } from '../services/conflict-detector.js'
 import { broadcast } from '../ws-events.js'
-import { activeIntents } from '../state.js'
+import { activeIntents, getIntentsForTarget } from '../state.js'
 import { recallFailuresForTarget, ingestContext, ingestDecision, ingestFailure } from '../hydra.js'
 import { trackConflict } from './conflicts.js'
 import { recentDecisions } from './decisions.js'
@@ -69,7 +69,9 @@ export async function hooksRoutes(app: FastifyInstance) {
       if (result.chunks?.length) {
         broadcast({ type: 'failure:recorded', sourceId: '', agentId, target, errorType: 'known-risk' })
       }
-    } catch { /* non-fatal */ }
+    } catch (e: any) {
+      console.error(`[hooks/pre] recallFailuresForTarget(${target}) failed:`, e?.message || e)
+    }
 
     // Declare intent + run conflict detection
     const intentId = `intent-${Date.now()}`
@@ -89,7 +91,9 @@ export async function hooksRoutes(app: FastifyInstance) {
     try {
       conflicts = await detectConflicts(intent)
       for (const c of conflicts) { trackConflict(c); broadcast({ type: 'conflict:detected', conflict: c }) }
-    } catch { /* non-fatal */ }
+    } catch (e: any) {
+      console.error(`[hooks/pre] detectConflicts failed for ${agentId} → ${target}:`, e?.message || e)
+    }
 
     const criticalConflict = conflicts.find(c => c.severity === 'critical')
     if (criticalConflict) {
@@ -104,6 +108,38 @@ export async function hooksRoutes(app: FastifyInstance) {
     }
 
     sessionIntents.set(session_id, intentId)
+
+    // Inform this agent if other agents have active intents on the same target.
+    // This is how peer-awareness reaches a running agent — Claude Code injects
+    // additionalContext into the conversation so the model can see it before
+    // proceeding with the write.
+    const peers = getIntentsForTarget(target).filter(i => i.agentId !== agentId && i.id !== intentId)
+    if (peers.length > 0) {
+      const peerSummary = peers
+        .map(p => `  - ${p.agentId}: ${p.description} (started ${new Date(p.startedAt).toISOString()})`)
+        .join('\n')
+      const additionalContext =
+        `[MissionControl] ${peers.length} other agent(s) currently have active intents on this target:\n${peerSummary}\n` +
+        `Coordinate or wait if your change might conflict with theirs.`
+      const peerConflict = {
+        id: `peer-${intentId}`,
+        severity: 'warning' as const,
+        kind: 'file' as const,
+        description: `${agentId} editing ${target} while ${peers.map(p => p.agentId).join(', ')} also have active intents on it`,
+        agentIds: [agentId, ...peers.map(p => p.agentId)],
+        intentIds: [intentId, ...peers.map(p => p.id)],
+        createdAt: Date.now(),
+      }
+      trackConflict(peerConflict)
+      broadcast({ type: 'conflict:detected', conflict: peerConflict })
+      return reply.send({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          additionalContext,
+        },
+      })
+    }
+
     return reply.send({})
   })
 
@@ -142,7 +178,9 @@ export async function hooksRoutes(app: FastifyInstance) {
       confidence: 0.9,
     }).then(() => {
       broadcast({ type: 'context:ingested', agentId })
-    }).catch(() => {})
+    }).catch((e: any) => {
+      console.error(`[hooks/post] ingestContext failed for ${agentId} → ${target}:`, e?.message || e)
+    })
 
     // 2. Auto-ingest a decision record into HydraDB when a file is written.
     //    This makes the Decision Log and Why? panel populate automatically from
@@ -161,7 +199,9 @@ export async function hooksRoutes(app: FastifyInstance) {
         recentDecisions.unshift(item)
         if (recentDecisions.length > 200) recentDecisions.pop()
         broadcast({ type: 'decision:recorded', sourceId, agentId, summary })
-      }).catch(() => {})
+      }).catch((e: any) => {
+        console.error(`[hooks/post] ingestDecision failed for ${agentId} → ${target}:`, e?.message || e)
+      })
     }
 
     // 3. Auto-detect bash failures from tool_response exit codes.
@@ -186,7 +226,9 @@ export async function hooksRoutes(app: FastifyInstance) {
           recentFailures.unshift(item)
           if (recentFailures.length > 500) recentFailures.pop()
           broadcast({ type: 'failure:recorded', sourceId, agentId, target, errorType: 'bash-error' })
-        }).catch(() => {})
+        }).catch((e: any) => {
+          console.error(`[hooks/post] ingestFailure failed for ${agentId} → ${target}:`, e?.message || e)
+        })
       }
     }
 

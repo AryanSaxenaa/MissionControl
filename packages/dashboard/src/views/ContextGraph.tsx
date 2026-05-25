@@ -30,15 +30,15 @@ export default function ContextGraph() {
   // Re-fetches when lastContextIngest increments (i.e. after any agent write).
   useEffect(() => {
     setLoading(true)
-    fetch('/api/memory/stats')
-      .then(r => r.json())
-      .then(() => fetch('/api/graph'))
+    fetch('/api/graph')
       .then(r => r.json())
       .then(g => {
         const sources: MemoryEntry[] = (g.sources ?? []).slice(0, 100)
         setEntries(sources)
       })
-      .catch(() => {})
+      .catch((e) => {
+        console.error('[ContextGraph] /api/graph failed:', e)
+      })
       .finally(() => setLoading(false))
   }, [lastContextIngest])
 
