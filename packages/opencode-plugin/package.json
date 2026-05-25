@@ -1,0 +1,17 @@
+{
+  "name": "@missioncontrol/opencode-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "build": "echo 'no-op'" },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": { "optional": true }
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

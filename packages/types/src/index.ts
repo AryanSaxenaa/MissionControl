@@ -1,7 +1,9 @@
+export type AgentKind = 'claude-code' | 'codex' | 'opencode' | 'custom'
+
 export interface AgentRecord {
   id: string
   name: string
-  kind: 'claude-code' | 'codex' | 'opencode' | 'custom'
+  kind: AgentKind
   status: 'active' | 'idle' | 'failed' | 'completed'
   pid?: number
   spawnedAt: number
@@ -10,6 +12,9 @@ export interface AgentRecord {
   contextRichness: number
   activeIntentId?: string
   parentAgentId?: string
+  // v3 additions:
+  assignedPort: number
+  worktreePath: string
 }
 
 export interface IntentRecord {
@@ -55,4 +60,15 @@ export interface FailureItem {
   target: string
   errorType: string
   createdAt: number
+}
+
+// Hook payload shape for Claude Code and Codex CLI HTTP hooks
+export interface HookPayload {
+  session_id: string
+  hook_event_name: string
+  tool_name: string
+  tool_input: Record<string, any>
+  tool_response?: { content: string }
+  cwd?: string
+  transcript_path?: string
 }

@@ -1,5 +1,5 @@
 import type { AgentRecord } from '@missioncontrol/types'
-import { broadcast } from '../ws.js'
+import { broadcast } from '../ws-events.js'
 import { agents } from '../state.js'
 
 export function startHealthMonitor() {

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { v4 as uuidv4 } from 'uuid'
 import { activeIntents, type IntentRecord, agents } from '../state.js'
-import { broadcast } from '../ws.js'
+import { broadcast } from '../ws-events.js'
 import { detectConflicts } from '../services/conflict-detector.js'
 import { ingestAgentSummary } from '../hydra.js'
 import { DeclareIntentSchema, UpdateIntentSchema } from '../validators.js'

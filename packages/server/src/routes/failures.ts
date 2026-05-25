@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { broadcast } from '../ws.js'
+import { broadcast } from '../ws-events.js'
 import { ingestFailure, recallFailuresForTarget } from '../hydra.js'
 import { incrementCounter } from '../services/agent-health.js'
 import { RecordFailureSchema, CheckFailuresSchema } from '../validators.js'

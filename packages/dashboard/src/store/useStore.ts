@@ -1,35 +1,62 @@
 import { create } from 'zustand'
 import type { AgentRecord, IntentRecord, ConflictResult, GraphData, DecisionItem, FailureItem } from '@missioncontrol/types'
 
-interface MissionControlStore {
-  wsConnected: boolean
-  setWsConnected: (v: boolean) => void
+export interface PermissionRequest {
+  requestId: string
+  agentId: string
+  tool: string
+  target: string
+  reason: string
+}
 
+interface MissionControlStore {
+  // Connection
+  eventsConnected: boolean
+  setEventsConnected: (v: boolean) => void
+
+  // Agents
   agents: Map<string, AgentRecord>
-  updateAgent: (agent: AgentRecord) => void
-  updateAgentHeartbeat: (id: string, status: AgentRecord['status'], task?: string) => void
+  upsertAgent: (agent: AgentRecord) => void
+  updateAgentStatus: (id: string, status: AgentRecord['status'], task?: string) => void
   markAgentDead: (id: string) => void
+  markAgentCompleted: (id: string) => void
   removeAgent: (id: string) => void
 
-  graphData: GraphData | null
-  setGraphData: (data: GraphData | null) => void
+  // Permission requests
+  pendingPermissions: PermissionRequest[]
+  addPermissionRequest: (r: PermissionRequest) => void
+  removePermissionRequest: (requestId: string) => void
 
+  // Merge queue
+  agentsPendingMerge: string[]
+  addAgentPendingMerge: (agentId: string) => void
+  removeAgentPendingMerge: (agentId: string) => void
+
+  // Intents
   activeIntents: Map<string, IntentRecord>
   upsertIntent: (intent: IntentRecord) => void
   updateIntentStatus: (intentId: string, status: IntentRecord['status']) => void
 
+  // Conflicts
   activeConflicts: ConflictResult[]
   resolvedConflicts: ConflictResult[]
   addConflict: (c: ConflictResult) => void
   resolveConflict: (id: string, resolution: string) => Promise<void>
   applyConflictResolved: (id: string, resolution: string) => void
 
+  // Decisions
   decisions: DecisionItem[]
   addDecision: (d: DecisionItem) => void
 
+  // Failures
   failures: FailureItem[]
   addFailure: (f: FailureItem) => void
 
+  // Graph
+  graphData: GraphData | null
+  setGraphData: (data: GraphData | null) => void
+
+  // UI
   activeView: 'fleet' | 'graph' | 'decisions' | 'conflicts' | 'failures'
   setView: (v: MissionControlStore['activeView']) => void
   selectedNodeId: string | null
@@ -47,13 +74,13 @@ function _moveConflictToResolved(s: MissionControlStore, conflict: ConflictResul
 }
 
 export const useMissionControlStore = create<MissionControlStore>((set, get) => ({
-  wsConnected: false,
-  setWsConnected: (v) => set({ wsConnected: v }),
+  eventsConnected: false,
+  setEventsConnected: (v: boolean) => set({ eventsConnected: v }),
 
   agents: new Map(),
-  updateAgent: (agent) =>
+  upsertAgent: (agent: AgentRecord) =>
     set((s) => { const m = new Map(s.agents); m.set(agent.id, agent); return { agents: m } }),
-  updateAgentHeartbeat: (id, status, task) =>
+  updateAgentStatus: (id: string, status: AgentRecord['status'], task?: string) =>
     set((s) => {
       const m = new Map(s.agents)
       const a = m.get(id)
@@ -67,11 +94,25 @@ export const useMissionControlStore = create<MissionControlStore>((set, get) => 
       if (a) m.set(id, { ...a, status: 'failed' })
       return { agents: m }
     }),
+  markAgentCompleted: (id) =>
+    set((s) => {
+      const m = new Map(s.agents)
+      const a = m.get(id)
+      if (a) m.set(id, { ...a, status: 'completed' })
+      return { agents: m }
+    }),
   removeAgent: (id) =>
     set((s) => { const m = new Map(s.agents); m.delete(id); return { agents: m } }),
 
-  graphData: null,
-  setGraphData: (data) => set({ graphData: data }),
+  pendingPermissions: [],
+  addPermissionRequest: (r) => set((s) => ({ pendingPermissions: [...s.pendingPermissions, r] })),
+  removePermissionRequest: (requestId) =>
+    set((s) => ({ pendingPermissions: s.pendingPermissions.filter(r => r.requestId !== requestId) })),
+
+  agentsPendingMerge: [],
+  addAgentPendingMerge: (id) => set((s) => ({ agentsPendingMerge: [...s.agentsPendingMerge, id] })),
+  removeAgentPendingMerge: (id) =>
+    set((s) => ({ agentsPendingMerge: s.agentsPendingMerge.filter(a => a !== id) })),
 
   activeIntents: new Map(),
   upsertIntent: (intent) =>
@@ -94,7 +135,6 @@ export const useMissionControlStore = create<MissionControlStore>((set, get) => 
   resolveConflict: async (id, resolution) => {
     const conflict = get().activeConflicts.find((c) => c.id === id)
     if (!conflict) return
-
     try {
       const resp = await fetch(`/api/conflicts/${id}/resolve`, {
         method: 'POST',
@@ -102,11 +142,8 @@ export const useMissionControlStore = create<MissionControlStore>((set, get) => 
         body: JSON.stringify({ resolution }),
       })
       if (!resp.ok) return
-
       set((s) => _moveConflictToResolved(s, conflict, resolution))
-    } catch {
-      // server unreachable — keep conflict visible
-    }
+    } catch { /* server unreachable */ }
   },
 
   decisions: [],
@@ -114,6 +151,9 @@ export const useMissionControlStore = create<MissionControlStore>((set, get) => 
 
   failures: [],
   addFailure: (f) => set((s) => ({ failures: [f, ...s.failures].slice(0, 500) })),
+
+  graphData: null,
+  setGraphData: (data) => set({ graphData: data }),
 
   activeView: 'fleet',
   setView: (v) => set({ activeView: v }),

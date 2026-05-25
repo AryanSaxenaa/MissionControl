@@ -1,0 +1,185 @@
+import type { FastifyInstance } from 'fastify'
+import type { HookPayload } from '@missioncontrol/types'
+import { detectConflicts } from '../services/conflict-detector.js'
+import { broadcast } from '../ws-events.js'
+import { activeIntents } from '../state.js'
+import { recallFailuresForTarget, ingestContext } from '../hydra.js'
+
+const WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'Bash']
+
+function extractTarget(tool_input: Record<string, any>): string {
+  return tool_input.file_path || tool_input.path || tool_input.command || 'unknown'
+}
+
+// In-flight permission requests: requestId → resolve fn
+const pendingPermissions = new Map<string, (decision: 'allow' | 'deny') => void>()
+
+// sessionId → agentId (populated by session-start hook)
+export const sessionToAgent = new Map<string, string>()
+// sessionId → intentId
+const sessionIntents = new Map<string, string>()
+
+export async function hooksRoutes(app: FastifyInstance) {
+
+  // Register session → agent mapping (called by each agent CLI on startup)
+  app.post('/hooks/session-start', async (req, reply) => {
+    const body = req.body as { session_id?: string; agentId?: string }
+    if (body.session_id && body.agentId) {
+      sessionToAgent.set(body.session_id, body.agentId)
+    }
+    return reply.send({ ok: true })
+  })
+
+  // Called by OpenCode plugin when session goes idle (agent finished)
+  app.post('/hooks/session-idle', async (req, reply) => {
+    const body = req.body as { session_id?: string; agentId?: string }
+    const agentId = body.agentId ?? (body.session_id ? sessionToAgent.get(body.session_id) : undefined)
+    if (agentId) {
+      broadcast({ type: 'agent:completed', agentId })
+      broadcast({ type: 'agent:ready-to-merge', agentId })
+    }
+    return reply.send({ ok: true })
+  })
+
+  // PreToolUse — runs before every Write/Edit/Bash tool call
+  app.post('/hooks/pre-tool-use', async (req, reply) => {
+    const body = req.body as HookPayload
+    const { tool_name, tool_input, session_id } = body
+
+    if (!WRITE_TOOLS.includes(tool_name)) {
+      return reply.send({})
+    }
+
+    const agentId = sessionToAgent.get(session_id)
+    if (!agentId) return reply.send({})
+
+    const target = extractTarget(tool_input)
+
+    // Preflight failure check
+    try {
+      const result = await recallFailuresForTarget(target)
+      if (result.chunks?.length) {
+        broadcast({ type: 'failure:recorded', sourceId: '', agentId, target, errorType: 'known-risk' })
+      }
+    } catch { /* non-fatal */ }
+
+    // Declare intent + run conflict detection
+    const intentId = `intent-${Date.now()}`
+    const intent = {
+      id: intentId,
+      agentId,
+      action: 'write' as const,
+      target,
+      description: tool_input.description ?? `${tool_name} on ${target}`,
+      status: 'in-progress' as const,
+      startedAt: Date.now(),
+    }
+    activeIntents.set(intentId, intent)
+    broadcast({ type: 'intent:declared', intent })
+
+    let conflicts: import('@missioncontrol/types').ConflictResult[] = []
+    try {
+      conflicts = await detectConflicts(intent)
+      for (const c of conflicts) broadcast({ type: 'conflict:detected', conflict: c })
+    } catch { /* non-fatal */ }
+
+    const criticalConflict = conflicts.find(c => c.severity === 'critical')
+    if (criticalConflict) {
+      activeIntents.delete(intentId)
+      return reply.send({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: `[MissionControl CONFLICT] ${criticalConflict.description}`,
+        },
+      })
+    }
+
+    sessionIntents.set(session_id, intentId)
+    return reply.send({})
+  })
+
+  // PostToolUse — runs after every Write/Edit/Bash
+  app.post('/hooks/post-tool-use', async (req, reply) => {
+    const body = req.body as HookPayload
+    const { tool_name, tool_input, session_id } = body
+
+    if (!WRITE_TOOLS.includes(tool_name)) return reply.send({})
+
+    const agentId = sessionToAgent.get(session_id)
+    if (!agentId) return reply.send({})
+
+    const intentId = sessionIntents.get(session_id)
+    if (intentId) {
+      const intent = activeIntents.get(intentId)
+      if (intent) {
+        activeIntents.set(intentId, { ...intent, status: 'completed' })
+        broadcast({ type: 'intent:updated', intentId, status: 'completed' })
+        setTimeout(() => activeIntents.delete(intentId), 60_000)
+      }
+      sessionIntents.delete(session_id)
+    }
+
+    const target = extractTarget(tool_input)
+    ingestContext({
+      agentId,
+      content: `Modified ${target}: ${tool_input.description ?? tool_name + ' operation'}`,
+      scope: target,
+      tags: ['modification', tool_name.toLowerCase()],
+      confidence: 0.9,
+    }).catch(() => {})
+
+    return reply.send({})
+  })
+
+  // PermissionRequest — suspends agent until user responds in dashboard
+  app.post('/hooks/permission-request', async (req, reply) => {
+    const body = req.body as HookPayload
+    const { session_id, tool_name, tool_input } = body
+
+    const agentId = sessionToAgent.get(session_id)
+    if (!agentId) return reply.send({ hookSpecificOutput: { permissionDecision: 'allow' } })
+
+    const requestId = `perm-${Date.now()}`
+    const target = extractTarget(tool_input)
+
+    broadcast({
+      type: 'permission:requested',
+      agentId,
+      requestId,
+      tool: tool_name,
+      target,
+      reason: tool_input.description ?? '',
+    })
+
+    // Wait for user decision (5 min timeout → default allow)
+    const decision = await new Promise<'allow' | 'deny'>((resolve) => {
+      pendingPermissions.set(requestId, resolve)
+      setTimeout(() => {
+        pendingPermissions.delete(requestId)
+        resolve('allow')
+      }, 300_000)
+    })
+
+    broadcast({ type: 'permission:resolved', agentId, requestId, decision })
+    return reply.send({
+      hookSpecificOutput: {
+        hookEventName: 'PermissionRequest',
+        permissionDecision: decision,
+      },
+    })
+  })
+
+  // Dashboard resolves a pending permission
+  app.post('/api/permissions/:requestId/resolve', async (req, reply) => {
+    const { requestId } = req.params as { requestId: string }
+    const { decision } = req.body as { decision: 'allow' | 'deny' }
+
+    const resolve = pendingPermissions.get(requestId)
+    if (resolve) {
+      pendingPermissions.delete(requestId)
+      resolve(decision)
+    }
+    return reply.send({ ok: true })
+  })
+}

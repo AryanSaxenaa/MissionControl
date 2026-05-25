@@ -3,7 +3,8 @@ import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
-import { attachWebSocketServer } from './ws.js'
+import { handleEventsUpgrade } from './ws-events.js'
+import { handlePtyUpgrade } from './ws-pty.js'
 import { agents, activeIntents } from './state.js'
 import { getGraphData } from './services/graph-traversal.js'
 import { startHealthMonitor } from './services/health-monitor.js'
@@ -14,6 +15,8 @@ import intentRoutes from './routes/intents.js'
 import decisionRoutes from './routes/decisions.js'
 import failureRoutes from './routes/failures.js'
 import conflictRoutes from './routes/conflicts.js'
+import { hooksRoutes } from './routes/hooks.js'
+import { mergeRoutes } from './routes/merge.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const envPath = resolve(__dirname, '../../../.env')
@@ -41,6 +44,8 @@ fastify.register(intentRoutes, { prefix: '/api/intents' })
 fastify.register(decisionRoutes, { prefix: '/api/decisions' })
 fastify.register(failureRoutes, { prefix: '/api/failures' })
 fastify.register(conflictRoutes, { prefix: '/api/conflicts' })
+fastify.register(hooksRoutes)
+fastify.register(mergeRoutes)
 
 fastify.get('/api/graph', async (req, reply) => {
   const { superNodes, sources } = await getGraphData()
@@ -64,7 +69,18 @@ try {
   console.error(`[MissionControl] Failed to start on port ${PORT}:`, (err as Error).message)
   process.exit(1)
 }
-attachWebSocketServer(fastify.server)
-console.log(`[MissionControl] Server on :${PORT}`)
 
+// Route WebSocket upgrades manually (required for two WSS on same HTTP server)
+fastify.server.on('upgrade', (request, socket, head) => {
+  const { pathname } = new URL(request.url!, `http://localhost`)
+  if (pathname === '/ws') {
+    handleEventsUpgrade(request, socket, head)
+  } else if (pathname.startsWith('/pty/')) {
+    handlePtyUpgrade(request, socket, head)
+  } else {
+    socket.destroy()
+  }
+})
+
+console.log(`[MissionControl] Server on :${PORT}`)
 startHealthMonitor()

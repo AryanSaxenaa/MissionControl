@@ -137,7 +137,7 @@ export async function ingestAgentSummary(agentId: string, summary: string) {
   })
 }
 
-export async function recallContext(query: string, subTenant = SUB_TENANTS.SHARED): Promise<HydraDB.RetrievalResult> {
+export async function recallContext(query: string, subTenant: string = SUB_TENANTS.SHARED): Promise<HydraDB.RetrievalResult> {
   return withTimeout(getHydra().recall.fullRecall({
     tenant_id: tenantId(),
     sub_tenant_id: subTenant,

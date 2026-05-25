@@ -1,5 +1,3 @@
-import { agents } from '../state.js'
-
 interface AgentCounters {
   inherited: number
   contextRead: number

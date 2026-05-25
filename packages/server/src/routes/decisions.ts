@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { broadcast } from '../ws.js'
+import { broadcast } from '../ws-events.js'
 import { ingestDecision, whyQuery } from '../hydra.js'
 import { RecordDecisionSchema, WhyQuerySchema } from '../validators.js'
 

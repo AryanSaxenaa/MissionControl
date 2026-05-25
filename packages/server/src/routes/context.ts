@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { ingestContext, recallContext } from '../hydra.js'
-import { broadcast } from '../ws.js'
+import { broadcast } from '../ws-events.js'
 import { incrementCounter } from '../services/agent-health.js'
 import { IngestContextSchema, QueryContextSchema } from '../validators.js'
 
