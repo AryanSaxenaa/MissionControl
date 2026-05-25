@@ -11,58 +11,47 @@
 
 ## What Is MissionControl?
 
-MissionControl is a **browser-based control plane for parallel AI coding agents**. Instead of running one agent at a time in a terminal window, you spawn a fleet — multiple Claude Code sessions, Codex instances, or OpenCode agents — each working in an isolated git branch, all visible and controllable from a single dashboard.
+MissionControl is a **browser-based control plane for parallel AI coding agents**. Instead of running one agent at a time in a terminal, you spawn a fleet — multiple Claude Code sessions, Codex instances, or OpenCode agents — each working in its own isolated git branch, all visible and controllable from a single dashboard.
 
-The problem it solves: when multiple AI agents work on the same codebase simultaneously, they collide. They overwrite each other's files, make contradictory architectural decisions, and repeat the same mistakes over and over because they each start from zero. MissionControl gives every agent a **shared brain powered by HydraDB** — a live, queryable memory of what every other agent has done, decided, and failed at.
+The problem it solves: when multiple AI agents work on the same codebase simultaneously, they collide. They overwrite each other's files, make contradictory architectural decisions, and repeat the same mistakes because each one starts from zero. MissionControl gives every agent a **shared brain powered by HydraDB** — a live, queryable memory of what every other agent has done, decided, and failed at.
 
-This is not a chat interface. It is not a terminal emulator wrapper. It is an **OS for agent coordination**.
+This is not a chat interface. It is not a terminal emulator wrapper. It is an **operating system for agent coordination**.
 
 ---
 
 ## What It Actually Does
 
-### 1. Spawns Agents With Isolated Git Worktrees
+### Real Terminals, Not Simulations
 
-Every agent gets its own `git worktree` branched from the current HEAD of your project. The agent works entirely in its own branch at `yourproject/.trees/agent-{id}`. It never touches your working tree. When it finishes, you review its changes and merge with one click.
+Every agent card in the dashboard is a real, fully interactive terminal rendered by [xterm.js](https://xtermjs.org/), connected over WebSocket to a [node-pty](https://github.com/microsoft/node-pty) process on the server. You can type, send keystrokes, and interact with every agent directly from the browser — exactly like a local terminal window. Output history is preserved so you never miss what happened before you opened a pane.
 
-Supported agent types:
-- **Claude Code** — Anthropic's CLI coding agent
-- **Codex CLI** — OpenAI's coding CLI
-- **OpenCode** — open-source coding agent
-- **Custom Shell** — any interactive shell script or command
+### Isolated Git Worktrees Per Agent
 
-### 2. Gives Every Agent a Shared Brain via HydraDB
+Every agent gets its own `git worktree` — a separate checkout of your repository on a fresh branch, created automatically at `yourproject/.trees/agent-{id}`. The agent works entirely in that branch. Your main working tree is never touched. When the agent finishes, you review the diff and choose to merge or discard.
 
-Before any agent starts working, MissionControl queries [HydraDB](https://hydradb.io) — a cloud agentic memory service — and writes a `.mc_context` file into the agent's worktree. This file contains:
-- Shared context from previous agents' work on related files
-- Prior architectural decisions that affect the current task
-- Parent agent context (for spawned child agents)
+### Shared Brain via HydraDB
 
-During work, every file write the agent makes is automatically ingested into HydraDB via HTTP hooks. The agent's edits become **searchable, graph-enriched memory** that all future agents and the merge review panel can query.
+Before any agent starts, MissionControl queries [HydraDB](https://hydradb.io) and writes a `.mc_context` file into the agent's worktree. This file contains relevant context from previous agents — shared knowledge, prior architectural decisions, parent agent history. The agent reads it and begins with full awareness of what others have done.
 
-### 3. Detects Conflicts Before They Happen
+As the agent works, every file write is automatically ingested into HydraDB. No agent instrumentation needed. The agent's edits become searchable, graph-enriched memory that future agents and the merge review panel can query.
 
-The three-step conflict detection pipeline runs before every tool call:
+### Conflict Detection Before It Happens
 
-1. **File conflicts (critical, instant)** — two agents intending to write the same file are blocked immediately, in-memory, with no LLM call required.
-2. **Semantic conflicts (warning)** — OpenRouter `owl-alpha` checks whether two agents' intents contradict each other semantically, even if they target different files.
-3. **Architectural conflicts (warning)** — HydraDB retrieves past architectural decisions for the target file, then `owl-alpha` checks whether the current intent contradicts them.
+Three-step pipeline runs before every tool call:
 
-Critical conflicts block the tool call with a `deny` decision returned directly to the agent CLI.
+1. **File conflicts — critical, instant.** Two agents writing the same file. Detected in-memory, no network call. The conflicting tool call is blocked immediately.
+2. **Semantic conflicts — warning.** OpenRouter `owl-alpha` checks whether two agents' intents contradict each other, even across different files.
+3. **Architectural conflicts — warning.** HydraDB retrieves past architectural decisions for the target file, then `owl-alpha` checks whether the current intent contradicts them.
 
-### 4. Live xterm.js Terminals in the Browser
+Critical conflicts return a `deny` decision directly to the agent CLI, stopping the write before it happens.
 
-Each agent card in the dashboard contains a real, fully interactive terminal rendered by [xterm.js](https://xtermjs.org/), connected via a dedicated WebSocket to a [node-pty](https://github.com/microsoft/node-pty) process on the server. You can type, interrupt, and interact with every agent directly from the browser. Output is buffered (64 KB rolling window per agent) so you see full history when you open a pane mid-session.
+### Permission Modals — You Stay in Control
 
-### 5. Permission Modals — Human in the Loop
+When an agent's `PermissionRequest` hook fires, the agent is **suspended** and a permission modal appears in the dashboard. You click Allow or Deny. The decision is returned to the agent and it resumes. No timeouts during active review — the agent waits.
 
-When an agent requests a sensitive operation, MissionControl's `PermissionRequest` hook suspends the agent and broadcasts a permission modal to the dashboard. You click Allow or Deny. The decision is sent back to the agent in real time. Agents never bypass this — the hook fires before the tool executes.
+### Review and Merge
 
-### 6. Review & Merge Workflow
-
-When an agent finishes, a **Review & Merge** button appears in its card. Clicking it opens a diff view showing every change the agent made, alongside a HydraDB context panel showing what the agent was working on and why. You write a commit message and click Merge — MissionControl commits the worktree, merges into your main branch with `--no-ff`, and cleans up the branch.
-
-Or you discard it. One click removes the worktree and branch entirely.
+When an agent finishes and exits, a **Review & Merge** button appears in its card. Clicking it opens a panel showing the full git diff of every change the agent made, plus a HydraDB context panel surfacing what was worked on and why. You write a commit message, click Merge, and MissionControl commits the worktree changes, merges into your main branch with `--no-ff`, and cleans up the worktree and branch. Or click Discard to throw it all away cleanly.
 
 ---
 
@@ -78,21 +67,22 @@ Or you discard it. One click removes the worktree and branch entirely.
 │  │ (xterm.js)   │  │  Graph   │  │   Log    │  │   Feed   │  │
 │  └──────┬───────┘  └─────┬────┘  └────┬─────┘  └────┬─────┘  │
 └─────────┼────────────────┼────────────┼──────────────┼─────────┘
-          │ WS /pty/:id    │            │              │
-          │ WS /ws (events)│            │              │
+          │                │            │              │
+          │  WS /pty/:id (raw terminal bytes)          │
+          │  WS /ws      (structured JSON events)      │
+          │                │            │              │
 ┌─────────▼────────────────▼────────────▼──────────────▼─────────┐
 │                     Fastify Server :3000                        │
 │                                                                 │
 │  ┌────────────┐  ┌──────────────┐  ┌───────────────────────┐  │
 │  │  node-pty  │  │  HTTP Hooks  │  │   Conflict Detector   │  │
-│  │  (per-     │  │  /hooks/     │  │   (3-step pipeline)   │  │
-│  │   agent)   │  │  pre/post/   │  │   owl-alpha via       │  │
-│  └────────────┘  │  permission  │  │   OpenRouter          │  │
+│  │ (per agent)│  │  pre/post/   │  │   file → semantic →   │  │
+│  │            │  │  permission/ │  │   architectural       │  │
+│  └────────────┘  │  session     │  │   (OpenRouter owl-α)  │  │
 │                  └──────────────┘  └───────────────────────┘  │
-│                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │                  Git Worktree Manager                     │  │
-│  │   yourproject/.trees/agent-{id}  →  agent/{id}-{task}   │  │
+│  │              Git Worktree Manager                         │  │
+│  │  yourproject/.trees/agent-{id}  →  branch agent/{id}-…  │  │
 │  └──────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────┬─────────────────────────────┘
                                    │ @hydradb/sdk
@@ -104,20 +94,19 @@ Or you discard it. One click removes the worktree and branch entirely.
 │  │  shared   │  │ decisions │  │ failures  │  │ agent-{id}│  │
 │  │ (context) │  │ (arch log)│  │ (errors)  │  │ (private) │  │
 │  └───────────┘  └───────────┘  └───────────┘  └───────────┘  │
-│                                                                 │
-│  Knowledge Graph + Semantic Search + Graph Super Nodes         │
+│           Knowledge Graph + Semantic Search                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Two WebSocket channels:**
-- `/ws` — structured JSON events: agent spawned/died/completed, conflicts, decisions, failures, permissions
-- `/pty/:agentId` — raw binary bytes: bidirectional xterm.js ↔ node-pty
+**Two WebSocket channels on the same HTTP server:**
+- `/ws` — structured JSON events (agent spawned/died/completed, conflicts, decisions, permissions)
+- `/pty/:agentId` — raw binary bytes, bidirectional xterm.js ↔ node-pty
 
-**HTTP hook endpoints** (called by agent CLIs, not the browser):
-- `POST /hooks/session-start` — maps session ID to agent ID
-- `POST /hooks/pre-tool-use` — conflict check + intent declaration
-- `POST /hooks/post-tool-use` — HydraDB ingest + decision logging
-- `POST /hooks/permission-request` — suspend agent, await user decision
+**HTTP hook endpoints** (called by the agent CLIs, not the browser):
+- `POST /hooks/session-start?agentId=` — maps the CLI's session ID to the MissionControl agent record
+- `POST /hooks/pre-tool-use?agentId=` — runs conflict check and declares intent
+- `POST /hooks/post-tool-use?agentId=` — ingests context and decision into HydraDB
+- `POST /hooks/permission-request?agentId=` — suspends the agent, waits for your decision in the dashboard
 
 ---
 
@@ -128,38 +117,43 @@ Or you discard it. One click removes the worktree and branch entirely.
 | Backend runtime | Node.js 20+ / TypeScript ESM |
 | HTTP framework | Fastify 4 |
 | Terminal processes | node-pty (ConPTY on Windows) |
-| WebSockets | ws library, `noServer: true` with manual upgrade routing |
+| WebSockets | `ws` library, `noServer: true`, manual upgrade routing |
 | Memory / Knowledge | HydraDB via `@hydradb/sdk` |
-| Conflict LLM | OpenRouter `owl-alpha` (reasoning-optimised, no Anthropic dependency) |
-| Frontend | React 18 + Vite |
+| Conflict LLM | OpenRouter `owl-alpha` (no Anthropic dependency) |
+| Frontend framework | React 18 + Vite |
 | Styling | Tailwind CSS v3 |
 | State management | Zustand |
 | Graph visualization | D3.js force simulation |
 | Activity charts | Recharts area charts |
 | Terminal renderer | xterm.js + FitAddon |
 | Git operations | simple-git |
-| Validation | Zod |
+| Schema validation | Zod |
 
 ---
 
 ## Prerequisites
 
-- **Node.js 20+**
-- **pnpm 9+** — `npm install -g pnpm`
-- **Git** — with `git worktree` support (Git 2.15+)
-- **HydraDB account** — get a free API key at [hydradb.io](https://hydradb.io)
-- **OpenRouter API key** *(optional)* — enables semantic and architectural conflict detection. Without it, only file-level conflicts are detected. Get one at [openrouter.ai](https://openrouter.ai)
-- At least one AI coding CLI installed globally: `claude`, `codex`, or `opencode`
+Before you start, make sure you have all of these:
+
+- **Node.js 20+** — check with `node --version`
+- **pnpm 9+** — install with `npm install -g pnpm`
+- **Git 2.15+** — with `git worktree` support, check with `git --version`
+- **HydraDB account and API key** — free tier available at [hydradb.io](https://hydradb.io). You need your API key and tenant ID.
+- **At least one AI coding CLI** installed globally on your machine:
+  - Claude Code: `npm install -g @anthropic-ai/claude-code`
+  - Codex CLI: `npm install -g @openai/codex`
+  - OpenCode: `npm install -g opencode-ai`
+- **OpenRouter API key** *(optional but recommended)* — enables semantic and architectural conflict detection. Without it only file-level conflicts are caught. Get one free at [openrouter.ai](https://openrouter.ai).
 
 ---
 
-## Installation & Setup
+## Installation
 
-### 1. Clone the repository
+### 1. Clone and install dependencies
 
 ```bash
-git clone https://github.com/yourusername/missioncontrol.git
-cd missioncontrol
+git clone https://github.com/AryanSaxenaa/MissionControl.git
+cd MissionControl
 pnpm install
 ```
 
@@ -169,297 +163,322 @@ pnpm install
 cp .env.example .env
 ```
 
-Open `.env` and fill in your values:
+Open `.env` in your editor. The file is pre-commented — here is what each variable does:
 
 ```env
-# ── HydraDB (required) ──────────────────────────────────────────
-# Get these from https://hydradb.io after creating an account.
-# These three variable names are required (SDK, MCP, and CLI each read a different prefix).
-HYDRA_DB_API_KEY=hdb-your-api-key
-HYDRA_DB_TENANT_ID=your-tenant-id
-HYDRA_DB_SUB_TENANT_ID=missioncontrol
+# ── HydraDB (required) ─────────────────────────────────────────
+# Get these from https://hydradb.io after creating a free account.
+# The API key, tenant ID, and sub-tenant ID must be set for the
+# brain/memory features to work. Without these, MissionControl
+# still runs but agents start without any shared context and
+# nothing is saved to persistent memory.
 
-HYDRA_API_KEY=hdb-your-api-key
-HYDRA_TENANT_ID=your-tenant-id
+HYDRA_DB_API_KEY=hdb-your-api-key        # used by @hydradb/sdk and @hydradb/mcp
+HYDRA_DB_TENANT_ID=your-tenant-id        # your HydraDB tenant
+HYDRA_DB_SUB_TENANT_ID=missioncontrol    # namespace for this project's memory
 
-HYDRADB_TENANT_ID=your-tenant-id
+HYDRA_API_KEY=hdb-your-api-key           # same key, different prefix used by the SDK
+HYDRA_TENANT_ID=your-tenant-id           # same tenant, different prefix used by the SDK
+
+HYDRADB_TENANT_ID=your-tenant-id         # used by the hydradb CLI tool
 HYDRADB_OUTPUT=human
 
-# ── Conflict Detection LLM (optional but recommended) ───────────
-# Enables semantic and architectural conflict detection between agents.
-# Uses OpenRouter owl-alpha. Without this, only file-level conflicts are caught.
+# ── Conflict Detection (optional) ──────────────────────────────
+# Enables semantic and architectural conflict detection.
+# Uses OpenRouter owl-alpha model. Without this key, only
+# file-level conflicts (two agents writing the same file) are
+# detected. Semantic and architectural checks are silently skipped.
 OPENROUTER_API_KEY=sk-or-your-key
 
-# ── Server Ports (defaults shown) ───────────────────────────────
+# ── Server port (defaults shown, change if port is in use) ─────
 MC_SERVER_PORT=3000
 ```
 
-> **Why three HydraDB variable prefixes?** The `@hydradb/sdk`, `@hydradb/mcp`, and the `hydradb` CLI each read slightly different env var names. Duplicating the values ensures all three work.
+> **Why are there three HydraDB variable prefixes?** The `@hydradb/sdk`, the `@hydradb/mcp` MCP server, and the `hydradb` CLI each read from slightly different environment variable names. Setting all three ensures every tool works correctly from the same `.env` file.
 
-### 3. Start the server
+### 3. Start MissionControl
 
+Open two terminal windows in the project directory.
+
+**Terminal 1 — backend server:**
 ```bash
 pnpm dev
 ```
+This starts the Fastify server on `http://localhost:3000`. You will see:
+```
+[MissionControl] Server on :3000
+```
 
-This starts the Fastify server on port 3000.
-
-### 4. Start the dashboard (separate terminal)
-
+**Terminal 2 — dashboard:**
 ```bash
 pnpm dev:dashboard
 ```
+This starts the Vite dev server on `http://localhost:3001`. You will see the Vite output with a Local URL.
 
-This starts the Vite dev server on port 3001.
+### 4. Open the dashboard
 
-### 5. Open the dashboard
-
-Navigate to **http://localhost:3001**
+Navigate to **http://localhost:3001** in your browser.
 
 ---
 
-## Using MissionControl
+## How to Use MissionControl
 
-### Spawning an Agent
+### Spawning Your First Agent
 
-1. Click **New Agent** (or **Spawn first agent** if the fleet is empty)
-2. Select the **AI type**: Claude Code, Codex, OpenCode, or Custom Shell
-3. Enter the **absolute path** to the git repository you want the agent to work in (auto-filled with the server's current directory)
-4. Optionally enter a **task description** — the agent will be started and the task injected via PTY stdin after the prompt appears. Leave blank for interactive mode.
-5. Click **Launch**
+Click **Spawn first agent** on the empty fleet screen, or **New Agent** in the top-right corner. A dialog appears with three fields:
 
-What happens immediately after you click Launch:
-- A new git worktree is created at `yourproject/.trees/agent-{id}` on a fresh branch
-- A port is assigned to the agent (starting at 3100, incrementing per agent)
-- Hook configuration is written into the worktree:
-  - Claude Code: `.claude/settings.json` (PreToolUse, PostToolUse, PermissionRequest, SessionStart hooks)
-  - Codex: `.codex/hooks.json`
-  - OpenCode: `opencode.json` referencing `@missioncontrol/opencode-plugin`
-- HydraDB is queried for relevant context from the `shared` and `decisions` sub-tenants
-- The retrieved context is written to `.mc_context` in the worktree so the agent can read it at startup
-- The agent CLI is spawned inside the worktree via node-pty
-- If a task was provided, it is injected via PTY stdin after prompt detection
-- The agent card appears in the dashboard with a live terminal
+**AI** — select the type of agent to spawn:
+- `Claude Code` — Anthropic's coding CLI
+- `Codex` — OpenAI's coding CLI
+- `OpenCode` — open-source coding agent
+- `Custom Shell` — any shell command or script
 
-### Working With Agents
+**Project Path** — the **absolute path on your local machine** to the git repository you want the agent to work in. This must be a path on your filesystem — for example `C:\Users\you\my-project` or `/home/you/my-project`. This is **not** a GitHub URL. The field is auto-filled with the server's working directory as a starting point — change it to the path of the project you want the agent to work on.
 
-**Live terminals** — Every agent card shows a real interactive terminal. Click in it and type. The terminal connects via WebSocket to the actual PTY process on the server. Previous output is replayed when you open the pane so you never miss what happened before you switched to that card.
+**Task** — a description of what the agent should do. Leave blank to start in interactive mode where you type instructions directly in the terminal. If you provide a task, it is automatically typed into the agent's terminal after the CLI prompt appears.
 
-**Status indicators** — Each agent shows its current status in real time: `active` (working), `idle`, `failed`, or `completed`. A colored health ring in the top-left of each card reflects status.
+Click **Launch**. The following happens before the terminal opens:
 
-**Agent colors** — Each agent gets a distinct accent color (orange, blue, purple, emerald, amber, cyan, pink, lime) so you can tell them apart at a glance.
+1. A git worktree is created at `yourproject/.trees/agent-{id}` on a new branch named `agent/{id}-{task-slug}`
+2. A unique port is assigned to the agent (3100, 3101, 3102, … one per agent)
+3. Hook configuration is written into the worktree:
+   - Claude Code → `.claude/settings.json`
+   - Codex → `.codex/hooks.json`
+   - OpenCode → `opencode.json` + auto-installs `@missioncontrol/opencode-plugin` via npm
+4. HydraDB is queried for shared context and prior decisions relevant to the task. Results are written to `.mc_context` in the worktree so the agent can read them at startup.
+5. The agent CLI process is spawned inside the worktree via node-pty
+6. If a task was provided, it is typed into the terminal after the prompt is detected
 
-**Port badge** — The `:3101` badge in each agent's header shows the port assigned to that agent.
+The agent card appears in the dashboard immediately with a live terminal.
+
+### Working With the Fleet
+
+**Live terminals** — Click anywhere in a terminal to focus it and type. The terminal connects directly to the agent process via WebSocket. Everything you type is sent to the process. Everything the process outputs appears in the terminal. There is no buffering delay.
+
+**Agent colors** — Each agent gets a distinct accent color (orange, blue, purple, emerald, amber, cyan, pink, lime) visible on the card border and header. Eight agents are distinctly colored before the palette cycles.
+
+**Status** — The status badge in each card header updates in real time: `active`, `idle`, `failed`, or `completed`. A small health ring in the corner reflects the same state.
+
+**Port** — The `:3101` badge shows which port was assigned to this agent. This is the port injected into the worktree's `.env` file as `PORT=3101`.
+
+**Activity Timeline** — While agents are running, a Recharts area chart appears above the fleet showing the last 10 minutes of activity in 30-second buckets: active agent count (orange), tool calls declared (blue), and failures (red).
 
 ### Reviewing and Merging
 
-When an agent finishes and exits, its status becomes `completed` and a **Review & Merge** button appears in the card header.
+When an agent finishes and its CLI exits, the status changes to `completed` and a **Review & Merge** button appears in the card header.
 
-Clicking it opens a panel showing:
-- The full git diff of everything the agent changed
-- A **Why?** context panel that queries HydraDB's `shared` sub-tenant using the agent's task, surfacing what the agent worked on and why
-- A commit message field
-- **Merge** and **Discard** buttons
+Click it to open the merge review panel:
+- **Diff view** — every file change the agent made, shown as a git diff
+- **Why?** panel — HydraDB is queried with the agent's task and returns the relevant context accumulated during the session: what was modified, what decisions were made, and the reasoning behind them
+- **Commit message** field — write a message describing the changes
+- **Merge** button — commits the worktree changes, runs `git merge --no-ff` into the main branch, removes the worktree, and deletes the branch
+- **Discard** button — removes the worktree and branch without merging
 
-**Merge** commits the agent's changes, runs `git merge --no-ff` into the main branch, removes the worktree, and deletes the branch.
+### Handling Permission Requests
 
-**Discard** removes the worktree and branch without merging — useful when an agent went the wrong direction.
+When an agent encounters a PermissionRequest (for example, Claude Code asking permission before a destructive operation), the agent is **suspended** — it stops executing and waits. A permission modal appears in the dashboard showing which agent is asking, which tool it wants to use, and why.
 
-### Resolving Permission Requests
-
-When an agent encounters an operation that requires permission (the `PermissionRequest` hook fires), the agent is **suspended** and a modal appears in the dashboard. Click **Allow** or **Deny**. The decision is sent back to the agent and it resumes.
+Click **Allow** to let the agent proceed, or **Deny** to block the operation. The agent resumes immediately after your decision.
 
 ---
 
 ## Dashboard Views
 
+Navigate between views using the sidebar.
+
 ### Agent Fleet
 
-The main view. Shows all running agents as cards with live terminals, status indicators, and merge controls. Below the fleet, an **Activity Timeline** area chart shows the last 10 minutes of activity in 30-second buckets:
-- Active agent count (orange)
-- Tool calls / intents declared (blue)
-- Failures (red)
+The main view. Shows all agents as terminal cards. Each card is a live interactive terminal with a status header. The activity timeline chart appears above the fleet when there is recent activity.
 
 ### HydraDB Memory Graph
 
-An interactive D3 force-directed graph visualizing the shared memory:
-- **Orange nodes** — active agents (large)
-- **Blue nodes** — HydraDB super nodes (semantically central concepts extracted by the knowledge graph)
-- **Small colored nodes** — individual memory entries, colored by sub-tenant (orange = shared context, blue = decisions, red = failures)
+An interactive D3 force-directed graph of the shared memory:
 
-The sidebar shows a live count of memory entries by sub-tenant and lists the 30 most recent entries. The graph re-fetches automatically after every agent write (via `context:ingested` WebSocket events).
+- **Large orange nodes** — active agents
+- **Medium blue nodes** — HydraDB super nodes (semantically central concepts extracted automatically by the knowledge graph as memory accumulates)
+- **Small nodes** — individual memory entries, colored by sub-tenant:
+  - Orange — `shared` context writes
+  - Blue — `decisions` records
+  - Red — `failures` records
+
+The graph and sidebar re-fetch automatically after every agent file write, driven by `context:ingested` WebSocket events. The sidebar shows a live count of entries per sub-tenant and the 30 most recent entries.
 
 ### Decision Log
 
-A chronological feed of every architectural decision made by any agent. Auto-populated from every file write (PostToolUse hook) — no agent instrumentation required. Shows which agent made the decision, which file was affected, and the reasoning.
+A live feed of every architectural decision made by any agent, auto-populated from file writes. No agent code instrumentation required — the `PostToolUse` hook records a decision entry for every `Write`, `Edit`, or `MultiEdit` call. Shows the agent, the file, and the description.
 
 ### Conflict Feed
 
-Active and resolved conflicts. Severity is shown with color: red for critical (blocks the agent), yellow for warning (advisory). One-click resolution marks a conflict as resolved.
+Active and resolved conflicts. Red = critical (the write was blocked). Yellow = warning (advisory, agent proceeded). One-click resolution marks a conflict closed.
 
 ### Failure Memory
 
-Every bash command that returned a non-zero exit code across all agents, indexed by file target and error type. Agents are warned at the start of each tool call if a target file has a known failure history.
+Every bash command that returned a non-zero exit code across all agents, indexed by target and error type. Before each tool call, the `PreToolUse` hook checks this store and warns agents of known-bad targets.
 
 ---
 
-## How HydraDB Powers the Brain
+## How HydraDB Fits In
 
-HydraDB is not just a log store. It is a **knowledge graph with semantic search** that automatically extracts entities, builds relationships between concepts, and enables context-aware recall. MissionControl uses it at every layer:
+HydraDB is not a database you query with SQL. It is a **semantic knowledge graph** that extracts entities and relationships from plain text, builds connections between concepts automatically, and answers queries with graph-enriched context. MissionControl uses it at every stage of an agent's lifecycle:
 
-### At Spawn: Context Injection
-
-Before the agent CLI starts, `injectBrainContext()` runs:
+### Before the Agent Starts
 
 ```
-task: "fix the payment webhook handler"
-    ↓ query HydraDB shared sub-tenant
-    ↓ query HydraDB decisions sub-tenant
-    ↓ optionally query parent agent's sub-tenant
-    ↓ write combined result to .mc_context in worktree
+Task: "refactor the payment handler"
+        ↓
+Query HydraDB shared sub-tenant  →  "previous agents modified src/payments.ts,
+                                     added Stripe SDK, removed raw fetch calls"
+Query HydraDB decisions sub-tenant  →  "decision: use Stripe SDK for webhook
+                                        verification, reasoning: reduces custom
+                                        crypto code"
+        ↓
+Write combined result to .mc_context in worktree
+        ↓
+Agent spawns and reads .mc_context
 ```
 
-The agent reads this file and starts with full knowledge of what other agents have done.
+The agent starts knowing what others have already done.
 
-### During Work: Automatic Ingestion
+### During Every File Write
 
-Every file the agent writes triggers `PostToolUse`:
+`PostToolUse` fires after each `Write`, `Edit`, `MultiEdit`, or `Bash` call:
 
-| Ingest type | Sub-tenant | What gets stored |
-|-------------|-----------|-----------------|
-| Context | `shared` | "Agent modified `src/auth.ts`: added JWT middleware" |
-| Decision | `decisions` | Full decision record with reasoning and affected files |
-| Failure | `failures` | Bash error output, exit code, command, target file |
+| What gets stored | Sub-tenant | HydraDB `infer` |
+|-----------------|-----------|-----------------|
+| `"Agent modified src/payments.ts: added webhook signature check"` | `shared` | `true` — knowledge graph builds automatically |
+| Full decision record with reasoning and affected files | `decisions` | `true` |
+| Bash error output when exit code is non-zero | `failures` | `false` — stored verbatim |
 
-HydraDB's `infer: true` flag tells it to extract insights and build the knowledge graph automatically — no tagging or schema design required.
+### During Conflict Detection
 
-### At Conflict Detection: Architectural Memory
+Before step 3 of the conflict pipeline, `recallDecisionsForTarget()` queries HydraDB for past decisions affecting the target file. The LLM then checks whether the current intent contradicts those decisions. HydraDB's graph-enriched results surface related decisions even when they don't mention the exact filename.
 
-Before the conflict LLM prompt is sent, `recallDecisionsForTarget()` queries HydraDB for past decisions affecting the target file. The LLM then checks whether the current intent contradicts those decisions. HydraDB's graph-enriched context means it finds related decisions even if they don't mention the exact filename.
+### In the Merge Review Panel
 
-### At Merge: Why? Panel
+When you open the Why? panel, `recallContext()` is called with the agent's task as the query string, searching the `shared` sub-tenant. The results show the accumulated history of what the agent worked on across its entire session.
 
-`recallContext()` is called with the agent's task as the query string, searching the `shared` sub-tenant. The result surfaces the agent's actual work history in the merge review panel.
+### Sub-tenant Reference
 
-### Sub-tenant Organization
-
-| Sub-tenant | Content | Infer |
-|------------|---------|-------|
-| `shared` | Cross-agent context from every file write | Yes |
-| `decisions` | Architectural decision records | Yes |
-| `failures` | Bash error records | No |
-| `intents` | Active intents (ephemeral) | No |
-| `agent-{id}` | Parent/child context inheritance | Yes |
+| Sub-tenant | What is stored there | Queried by |
+|------------|---------------------|-----------|
+| `shared` | Context from every file write | Spawn brain injection, merge review Why? panel |
+| `decisions` | Architectural decision records | Spawn brain injection, conflict step 3 |
+| `failures` | Bash errors and non-zero exits | PreToolUse preflight check |
+| `intents` | Active intent declarations | Conflict detection (in-memory also) |
+| `agent-{id}` | Child agent inherits parent's private context | Parent/child spawn inheritance |
 
 ---
 
-## How Hooks Work
+## How Hook Configuration Works
 
-When an agent is spawned, MissionControl writes hook configuration into the worktree. The agent CLI then calls these HTTP endpoints on every tool use.
+When you spawn an agent, MissionControl writes hook configuration directly into the worktree so the agent CLI calls MissionControl's HTTP endpoints on every tool use. You do not need to configure this manually.
 
 ### Claude Code
 
+Written to `.claude/settings.json` in the worktree:
+
 ```json
-// .claude/settings.json (written into worktree)
 {
   "hooks": {
     "PreToolUse": [{
       "matcher": "Write|Edit|MultiEdit|Bash",
       "hooks": [{ "type": "http", "url": "http://localhost:3000/hooks/pre-tool-use?agentId=agent-xxx" }]
     }],
-    "PostToolUse": [{ ... }],
-    "PermissionRequest": [{ ... }],
-    "SessionStart": [{ ... }]
+    "PostToolUse": [{
+      "matcher": "Write|Edit|MultiEdit|Bash",
+      "hooks": [{ "type": "http", "url": "http://localhost:3000/hooks/post-tool-use?agentId=agent-xxx" }]
+    }],
+    "PermissionRequest": [{
+      "matcher": ".*",
+      "hooks": [{ "type": "http", "url": "http://localhost:3000/hooks/permission-request?agentId=agent-xxx" }]
+    }],
+    "SessionStart": [{
+      "matcher": ".*",
+      "hooks": [{ "type": "http", "url": "http://localhost:3000/hooks/session-start?agentId=agent-xxx" }]
+    }]
   }
 }
 ```
 
 ### Codex CLI
 
-```json
-// .codex/hooks.json (written into worktree)
-{
-  "hooks": {
-    "PreToolUse": [{ "type": "http", "url": "http://localhost:3000/hooks/pre-tool-use?agentId=agent-xxx" }],
-    "PostToolUse": [{ ... }],
-    "PermissionRequest": [{ ... }],
-    "SessionStart": [{ ... }]
-  }
-}
-```
+Written to `.codex/hooks.json` in the worktree. Same four events, same URLs.
 
 ### OpenCode
 
+Written to `opencode.json` in the worktree. Uses a plugin instead of raw HTTP hooks:
+
 ```json
-// opencode.json (written into worktree)
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": ["@missioncontrol/opencode-plugin"]
 }
 ```
 
-The OpenCode plugin (`packages/opencode-plugin`) is automatically installed into the worktree via `npm install`. It handles all the same hooks as Claude Code and Codex.
+The `@missioncontrol/opencode-plugin` package is automatically installed into the worktree via `npm install` during spawn. It handles the same four events as Claude Code and Codex.
 
-The `?agentId=agent-xxx` query parameter in all hook URLs is how the server maps a Claude Code or Codex session to its agent record. The session ID alone is not enough — the `agentId` must be in the URL.
+### Why `?agentId=` Is in Every URL
+
+The agent CLI sends a `session_id` in its hook payloads but does not send the MissionControl `agentId`. Embedding the `agentId` as a query parameter in the hook URLs is how the server knows which agent record to update when a hook fires.
 
 ---
 
 ## Repository Structure
 
 ```
-missioncontrol/
+MissionControl/
 ├── packages/
-│   ├── types/              # Shared TypeScript type definitions
-│   │   └── src/index.ts    # AgentRecord, IntentRecord, ConflictResult, WSEvent, ...
+│   ├── types/                       # Shared TypeScript type definitions
+│   │   └── src/index.ts             # AgentRecord, IntentRecord, ConflictResult, WSEvent ...
 │   │
-│   ├── server/             # Fastify backend (:3000)
+│   ├── server/                      # Fastify backend — runs on :3000
 │   │   └── src/
-│   │       ├── index.ts                    # Server entry, routes registration
-│   │       ├── hydra.ts                    # All HydraDB operations
-│   │       ├── state.ts                    # In-memory agents + intents Maps
-│   │       ├── ws-events.ts                # WebSocket event broadcaster
-│   │       ├── ws-pty.ts                   # PTY WebSocket server + buffer replay
-│   │       ├── pty-buffer.ts               # 64KB rolling output buffer per agent
+│   │       ├── index.ts             # Server entry point, route registration
+│   │       ├── hydra.ts             # All HydraDB SDK calls (ingest, recall, graph)
+│   │       ├── state.ts             # In-memory agents Map and activeIntents Map
+│   │       ├── ws-events.ts         # WebSocket event broadcaster (/ws channel)
+│   │       ├── ws-pty.ts            # PTY WebSocket server + output buffer replay
+│   │       ├── pty-buffer.ts        # 64 KB rolling output buffer per agent
 │   │       ├── routes/
-│   │       │   ├── agents.ts               # /spawn, /kill, /resize, /register
-│   │       │   ├── hooks.ts                # HTTP hook endpoints
-│   │       │   ├── merge.ts                # /diff, /merge, /discard
-│   │       │   ├── decisions.ts            # Decision log
-│   │       │   ├── failures.ts             # Failure memory
-│   │       │   ├── conflicts.ts            # Conflict tracking
-│   │       │   └── context.ts              # Context ingest + query
+│   │       │   ├── agents.ts        # /spawn, /kill, /resize, /register (compat)
+│   │       │   ├── hooks.ts         # /hooks/session-start|pre|post|permission
+│   │       │   ├── merge.ts         # /diff, /merge, /discard
+│   │       │   ├── decisions.ts     # Decision log endpoints
+│   │       │   ├── failures.ts      # Failure memory endpoints
+│   │       │   ├── conflicts.ts     # Conflict tracking endpoints
+│   │       │   └── context.ts       # Context ingest and query
 │   │       └── services/
-│   │           ├── pty-spawner.ts          # node-pty process management
-│   │           ├── worktree-manager.ts     # git worktree create/merge/delete
-│   │           ├── hook-installer.ts       # Write hook config into worktrees
-│   │           ├── conflict-detector.ts    # 3-step conflict pipeline
-│   │           ├── port-registry.ts        # Per-agent port assignment
-│   │           ├── health-monitor.ts       # SDK agent health checks
-│   │           └── graph-traversal.ts      # HydraDB graph data for dashboard
+│   │           ├── pty-spawner.ts   # node-pty process lifecycle
+│   │           ├── worktree-manager.ts  # git worktree create/merge/delete
+│   │           ├── hook-installer.ts    # Write hook config into each worktree
+│   │           ├── conflict-detector.ts # 3-step conflict pipeline
+│   │           ├── port-registry.ts     # Per-agent port assignment (3100+)
+│   │           ├── health-monitor.ts    # SDK agent heartbeat checking
+│   │           └── graph-traversal.ts   # Fetch HydraDB graph data for dashboard
 │   │
-│   ├── dashboard/          # React + Vite frontend (:3001)
+│   ├── dashboard/                   # React + Vite frontend — runs on :3001
 │   │   └── src/
 │   │       ├── views/
-│   │       │   ├── AgentFleet.tsx          # Main fleet view
-│   │       │   ├── ContextGraph.tsx        # D3 memory graph
-│   │       │   ├── DecisionLog.tsx         # Decision feed
-│   │       │   ├── ConflictFeed.tsx        # Conflict feed
-│   │       │   └── FailureMemory.tsx       # Failure log
+│   │       │   ├── AgentFleet.tsx       # Main fleet view with spawn dialog
+│   │       │   ├── ContextGraph.tsx     # D3 memory graph + HydraDB sidebar
+│   │       │   ├── DecisionLog.tsx      # Decision feed
+│   │       │   ├── ConflictFeed.tsx     # Conflict feed with resolve controls
+│   │       │   └── FailureMemory.tsx    # Failure log
 │   │       ├── components/
-│   │       │   ├── AgentPane.tsx           # xterm.js terminal card
-│   │       │   ├── AgentTimeline.tsx       # Recharts activity chart
-│   │       │   ├── NewAgentDialog.tsx      # Spawn dialog
-│   │       │   ├── MergeReview.tsx         # Diff + merge panel
-│   │       │   └── HealthRing.tsx          # Agent status indicator
-│   │       ├── hooks/useEventSocket.ts     # WebSocket event handler
-│   │       └── store/useStore.ts           # Zustand state
+│   │       │   ├── AgentPane.tsx        # xterm.js terminal card per agent
+│   │       │   ├── AgentTimeline.tsx    # Recharts area chart (last 10 min)
+│   │       │   ├── NewAgentDialog.tsx   # Spawn form
+│   │       │   ├── MergeReview.tsx      # Diff + Why? + merge controls
+│   │       │   └── HealthRing.tsx       # Animated status ring
+│   │       ├── hooks/useEventSocket.ts  # WebSocket event → Zustand dispatch
+│   │       └── store/useStore.ts        # Zustand store for all app state
 │   │
-│   ├── sdk/                # @missioncontrol/sdk — programmatic agent API
-│   ├── cli/                # mc CLI — `mc start` etc.
-│   └── opencode-plugin/    # @missioncontrol/opencode-plugin
+│   ├── sdk/                         # @missioncontrol/sdk — programmatic agent API
+│   ├── cli/                         # mc CLI — helper commands
+│   └── opencode-plugin/             # @missioncontrol/opencode-plugin for OpenCode
 │
-├── scripts/cleanup.mjs     # Remove leftover worktrees
-├── .env.example            # Environment variable template
+├── scripts/cleanup.mjs              # Remove orphaned .trees/ worktrees
+├── .env.example                     # Environment variable template
 ├── pnpm-workspace.yaml
 └── package.json
 ```
@@ -470,81 +489,83 @@ missioncontrol/
 
 ### Agent Management
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/agents/spawn` | Spawn a new agent (creates worktree, installs hooks, starts PTY) |
-| `POST` | `/api/agents/:id/kill` | Kill agent process |
-| `POST` | `/api/agents/:id/resize` | Resize PTY (cols/rows) |
-| `GET` | `/api/agents` | List all agents |
+| Method | Endpoint | Body | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/agents/spawn` | `{ kind, name, task, projectPath }` | Spawn agent — creates worktree, installs hooks, starts PTY |
+| `POST` | `/api/agents/:id/kill` | — | Kill agent process |
+| `POST` | `/api/agents/:id/resize` | `{ cols, rows }` | Resize the PTY to match xterm.js dimensions |
+| `GET` | `/api/agents` | — | List all agent records |
 
 ### Merge Workflow
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/agents/:id/diff` | Get git diff + HydraDB context summary |
-| `POST` | `/api/agents/:id/merge` | Merge worktree into main |
-| `POST` | `/api/agents/:id/discard` | Discard worktree without merging |
+| Method | Endpoint | Body | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/agents/:id/diff` | — | Git diff of agent's changes + HydraDB context summary |
+| `POST` | `/api/agents/:id/merge` | `{ commitMessage }` | Commit + merge worktree into main, clean up |
+| `POST` | `/api/agents/:id/discard` | — | Remove worktree and branch without merging |
 
-### Hook Endpoints (called by agent CLIs, not the browser)
+### Hook Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/hooks/session-start` | Map session_id → agentId |
-| `POST` | `/hooks/pre-tool-use?agentId=` | Conflict check, intent declaration |
-| `POST` | `/hooks/post-tool-use?agentId=` | HydraDB ingest, decision logging |
-| `POST` | `/hooks/permission-request?agentId=` | Suspend agent, await user decision |
-
-### Memory & Graph
+These are called by the agent CLIs, not by the browser. The `?agentId=` parameter is embedded in the hook URLs automatically when the agent is spawned.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/context` | Ingest context into HydraDB |
-| `GET` | `/api/context/query` | Query context by scope/tags |
-| `POST` | `/api/decisions` | Record a decision |
-| `GET` | `/api/decisions/why?target=` | Ask why a file was changed |
-| `POST` | `/api/failures` | Record a failure |
-| `GET` | `/api/failures/check?target=` | Check known failures for a target |
-| `GET` | `/api/graph` | Get full graph data (agents + HydraDB nodes) |
-| `GET` | `/api/memory/stats` | HydraDB source counts by sub-tenant |
+| `POST` | `/hooks/session-start?agentId=` | Maps CLI session ID to MissionControl agent record |
+| `POST` | `/hooks/pre-tool-use?agentId=` | Runs 3-step conflict check, declares intent |
+| `POST` | `/hooks/post-tool-use?agentId=` | Ingests context + decision into HydraDB |
+| `POST` | `/hooks/permission-request?agentId=` | Suspends agent, waits for user Allow/Deny |
+| `POST` | `/hooks/session-idle` | Called by OpenCode plugin when session goes idle |
+
+### Memory and Graph
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/context` | Manually ingest context into HydraDB |
+| `GET` | `/api/context/query?scope=&tags=` | Query context by scope and tags |
+| `POST` | `/api/decisions` | Manually record a decision |
+| `GET` | `/api/decisions/why?target=` | Ask HydraDB why decisions were made about a file |
+| `POST` | `/api/failures` | Manually record a failure |
+| `GET` | `/api/failures/check?target=` | Check known failures for a target path |
+| `GET` | `/api/graph` | Full graph data: agents + HydraDB super nodes + sources |
+| `GET` | `/api/memory/stats` | HydraDB source count by sub-tenant |
 
 ### Permissions
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/permissions/:requestId/resolve` | Resolve a pending permission (allow/deny) |
+| Method | Endpoint | Body | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/permissions/:requestId/resolve` | `{ decision: "allow" \| "deny" }` | Resolve a pending permission request |
 
 ### System
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/status` | Agent count, intent count, uptime |
-| `GET` | `/api/server-info` | Server cwd + platform (used to prefill spawn dialog) |
+| `GET` | `/api/status` | Agent count, intent count, server uptime |
+| `GET` | `/api/server-info` | Server working directory and platform — used by the spawn dialog to prefill the project path field |
 
 ### WebSocket
 
-| Channel | Protocol | Description |
-|---------|----------|-------------|
-| `ws://localhost:3000/ws` | JSON | Structured events: agent lifecycle, conflicts, decisions, failures |
-| `ws://localhost:3000/pty/:agentId` | Binary | Raw xterm bytes, bidirectional |
+| URL | Protocol | Purpose |
+|-----|----------|---------|
+| `ws://localhost:3000/ws` | JSON messages | Structured events: agent lifecycle, conflicts, decisions, failures, permissions |
+| `ws://localhost:3000/pty/:agentId` | Binary | Raw terminal bytes, bidirectional between xterm.js and node-pty |
+
+The dashboard automatically connects to both channels on load and reconnects with exponential backoff if the connection drops.
 
 ---
 
 ## Development
 
 ```bash
-# Type-check all packages
-pnpm -r typecheck
-
-# Build all packages
+# Build all packages (types → server + dashboard + sdk + cli)
 pnpm build
 
-# Run server in dev mode (hot reload)
+# Start backend server with hot reload
 pnpm dev
 
-# Run dashboard in dev mode (Vite HMR)
+# Start dashboard with Vite HMR
 pnpm dev:dashboard
 
-# Clean up orphaned worktrees from crashed sessions
+# Remove orphaned worktrees from crashed sessions
 pnpm cleanup
 ```
 
@@ -552,23 +573,25 @@ pnpm cleanup
 
 ## Troubleshooting
 
-**Agent shows "failed" status after 30 seconds**
-Only SDK-registered agents are heartbeat-monitored. PTY agents (spawned via the dashboard) are tracked by their node-pty process — they never show as dead while running. If you see "failed" for a PTY agent, the process actually exited.
+**HydraDB features are not working — agents start without context, memory graph is empty**
 
-**Terminal is blank when I open an agent pane**
-Should not happen — output is buffered (64 KB per agent) and replayed on WebSocket connect. If you see a blank terminal, the agent exited before you opened the pane. Check the agent's status badge.
+Check that `HYDRA_API_KEY` and `HYDRA_TENANT_ID` are correctly set in `.env` and that the server was restarted after editing the file. HydraDB calls fail silently — the server continues running but skips all memory operations. To verify connectivity, run `hydradb memories list` in your terminal. If it errors, the credentials are wrong.
 
-**Hook endpoint returns 200 but nothing appears in HydraDB**
-Check that `HYDRA_API_KEY` and `HYDRA_TENANT_ID` are set in `.env`. HydraDB calls are non-fatal (they silently fail if credentials are missing). Run `hydradb memories list` to verify entries are being stored.
+**Conflict detection only catches file-level conflicts, not semantic or architectural ones**
 
-**Conflict detection is not running**
-Semantic and architectural conflict detection require `OPENROUTER_API_KEY`. File-level conflicts (two agents writing the same file) work without it. Add the key to `.env` and restart the server.
+`OPENROUTER_API_KEY` is missing from `.env`. Add it and restart the server. File-level conflicts (two agents writing the same file) are always detected in-memory with no API key required.
 
-**git worktree errors on spawn**
-The `projectPath` you enter must be a git repository with at least one commit. Bare repos and repos without a HEAD commit are not supported. Ensure the path exists and `git status` runs cleanly inside it.
+**git worktree error when spawning an agent**
 
-**npm install fails during OpenCode agent spawn**
-The `@missioncontrol/opencode-plugin` install into the worktree runs `npm install` in the worktree directory. If this fails (network, permissions, no `package.json`), the plugin is skipped and the OpenCode agent runs without hooks — it will still work as a terminal, but PostToolUse ingestion and conflict detection won't fire.
+The Project Path you entered is either not a git repository or has no commits yet. MissionControl calls `git worktree add` to create the isolated branch — this requires a git repo with at least one commit on HEAD. Run `git init && git commit --allow-empty -m "init"` in the target directory if it is a new project.
+
+**OpenCode agent spawns but hooks are not firing**
+
+The `@missioncontrol/opencode-plugin` is installed into the worktree via `npm install` during spawn. If the target project has no `package.json`, or if npm fails due to network or permission issues, the plugin install is skipped and the OpenCode agent runs without hooks. The terminal still works but PostToolUse ingestion and conflict detection are disabled. Check the server console for npm error output during spawn.
+
+**Spawned agent terminal shows the wrong directory**
+
+Each agent works inside its worktree at `yourproject/.trees/agent-{id}`, not in your main project directory. This is by design — it is how agents are isolated from each other. The agent branch is named `agent/{id}-{task-slug}` and is visible in `git branch -a` from your project directory.
 
 ---
 

@@ -57,3 +57,6 @@ yarn.lock
 .commandcode/
 .firecrawl/
 .codex/
+
+# MCP server config (contains tenant IDs and API key references)
+.mcp.json
