@@ -1,21 +1,40 @@
 import { useState } from 'react'
 import { useMissionControlStore } from '../store/useStore'
 
+interface WhyResult {
+  answer: string
+  chunks: { chunk_content?: string; relevancy_score?: number }[]
+  recentDecisions: { sourceId: string; agentId: string; summary: string; createdAt: number }[]
+}
+
+// Extract the logical file path from an auto-generated summary like:
+// "Agent agent-bc36... modified C:\..\.trees\agent-bc36...\src\index.ts: Edit"
+function extractPathFromSummary(summary: string): string {
+  const match = summary.match(/modified (.+?)(?::\s*\w+\s*)?$/)
+  if (match) {
+    const raw = match[1].trim()
+    // Strip worktree prefix: anything up to and including \.trees\<agentId>\
+    const stripped = raw.replace(/.*[/\\]\.trees[/\\][^/\\]+[/\\]/i, '')
+    return stripped.replace(/\\/g, '/') || raw
+  }
+  return summary
+}
+
 export default function DecisionLog() {
   const store = useMissionControlStore()
   const [whyTarget, setWhyTarget] = useState('')
-  const [whyAnswer, setWhyAnswer] = useState<string | null>(null)
+  const [whyResult, setWhyResult] = useState<WhyResult | null>(null)
   const [whyLoading, setWhyLoading] = useState(false)
 
   const queryWhy = async () => {
     if (!whyTarget.trim()) return
-    setWhyLoading(true); setWhyAnswer(null)
+    setWhyLoading(true); setWhyResult(null)
     try {
       const r = await fetch(`/api/decisions/why?target=${encodeURIComponent(whyTarget.trim())}`)
       const data = await r.json()
-      setWhyAnswer(data.answer ?? 'No answer available.')
+      setWhyResult(data)
     } catch {
-      setWhyAnswer('Failed to query memory.')
+      setWhyResult({ answer: 'Failed to query memory.', chunks: [], recentDecisions: [] })
     } finally {
       setWhyLoading(false)
     }
@@ -27,7 +46,7 @@ export default function DecisionLog() {
         Decision Log
       </h2>
 
-      {/* Why? panel — queries HydraDB decision memory */}
+      {/* Why? panel */}
       <div className="border border-[#171717] bg-[#020202] p-5 flex-shrink-0">
         <div className="text-xs text-orange-500 uppercase tracking-widest mb-3">Why? — Query Decision Memory</div>
         <div className="flex gap-2">
@@ -35,7 +54,7 @@ export default function DecisionLog() {
             value={whyTarget}
             onChange={e => setWhyTarget(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && queryWhy()}
-            placeholder="e.g. src/auth/token.ts"
+            placeholder="e.g. src/index.ts or auth module"
             className="flex-1 bg-black border border-[#2a2a2a] text-[#d4d4d4] text-sm font-mono px-3 py-2 outline-none focus:border-orange-500 placeholder-[#444]"
           />
           <button
@@ -46,10 +65,36 @@ export default function DecisionLog() {
             {whyLoading ? '...' : 'Ask'}
           </button>
         </div>
-        {whyAnswer !== null && (
-          <p className="mt-3 text-sm text-[#d4d4d4] font-mono leading-relaxed border-t border-[#171717] pt-3">
-            {whyAnswer}
-          </p>
+
+        {whyResult && (
+          <div className="mt-3 border-t border-[#171717] pt-3 space-y-3">
+            <p className="text-sm text-[#d4d4d4] font-mono leading-relaxed">{whyResult.answer}</p>
+
+            {/* HydraDB semantic matches */}
+            {whyResult.chunks.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[10px] text-[#555] uppercase tracking-widest">HydraDB matches</div>
+                {whyResult.chunks.slice(0, 5).map((c, i) => (
+                  <div key={i} className="bg-[#0a0a0a] border border-[#1a1a1a] p-3 text-xs text-[#999] font-mono leading-relaxed">
+                    {c.chunk_content ?? ''}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* In-memory fallback when HydraDB hasn't indexed yet */}
+            {whyResult.chunks.length === 0 && whyResult.recentDecisions.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[10px] text-[#555] uppercase tracking-widest">This session</div>
+                {whyResult.recentDecisions.map(d => (
+                  <div key={d.sourceId} className="bg-[#0a0a0a] border border-[#1a1a1a] p-3 text-xs text-[#999] font-mono leading-relaxed">
+                    <span className="text-[#555]">{d.agentId.slice(0, 14)} · </span>
+                    {d.summary}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -64,7 +109,7 @@ export default function DecisionLog() {
             <div
               key={d.sourceId}
               className="border border-[#171717] bg-[#020202] p-4 hover:border-[#2a2a2a] transition-colors cursor-pointer"
-              onClick={() => setWhyTarget(d.summary.split(' ').slice(0, 5).join(' '))}
+              onClick={() => setWhyTarget(extractPathFromSummary(d.summary))}
               title="Click to query Why? for this decision"
             >
               <div className="flex items-center gap-3 mb-2">
