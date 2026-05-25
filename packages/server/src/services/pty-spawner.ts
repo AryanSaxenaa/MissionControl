@@ -105,9 +105,17 @@ export async function spawnAgent(
       } else {
         broadcast({ type: 'agent:died', agentId })
       }
+    } else if (hasTask) {
+      // Non-interactive: `claude -p "task"` exits 0 on success, non-zero on crash/failure.
+      if (exitCode === 0) {
+        broadcast({ type: 'agent:completed', agentId })
+        broadcast({ type: 'agent:ready-to-merge', agentId })
+      } else {
+        broadcast({ type: 'agent:died', agentId })
+      }
     } else {
-      // AI TUIs always exit non-zero. Any exit = session closed by user.
-      // Always offer Review & Merge — the worktree has the agent's changes.
+      // Interactive TUI (no task): user manually closed the session.
+      // Always offer Review & Merge — the worktree has their changes.
       broadcast({ type: 'agent:completed', agentId })
       broadcast({ type: 'agent:ready-to-merge', agentId })
     }

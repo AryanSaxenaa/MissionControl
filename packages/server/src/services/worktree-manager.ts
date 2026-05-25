@@ -56,6 +56,9 @@ export async function mergeWorktree(
   const worktreeGit = simpleGit(wtPath)
 
   const branchName = (await worktreeGit.revparse(['--abbrev-ref', 'HEAD'])).trim()
+  if (!branchName || branchName === 'HEAD') {
+    throw new Error(`Worktree for agent ${agentId} is in detached HEAD state — cannot merge. Check out a branch first.`)
+  }
 
   await worktreeGit.add('.')
   const status = await worktreeGit.status()

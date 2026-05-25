@@ -35,6 +35,12 @@ export function normalizeTarget(p: string): string {
   return s
 }
 
+export function clearIntentsForAgent(agentId: string): void {
+  for (const [id, intent] of activeIntents.entries()) {
+    if (intent.agentId === agentId) activeIntents.delete(id)
+  }
+}
+
 export function pathsOverlap(a: string, b: string): boolean {
   const na = normalizeTarget(a)
   const nb = normalizeTarget(b)

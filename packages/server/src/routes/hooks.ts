@@ -23,6 +23,16 @@ export const sessionToAgent = new Map<string, string>()
 // sessionId → intentId
 const sessionIntents = new Map<string, string>()
 
+export function clearSessionsForAgent(agentId: string): void {
+  for (const [sessionId, aId] of sessionToAgent.entries()) {
+    if (aId === agentId) {
+      const intentId = sessionIntents.get(sessionId)
+      if (intentId) sessionIntents.delete(sessionId)
+      sessionToAgent.delete(sessionId)
+    }
+  }
+}
+
 export async function hooksRoutes(app: FastifyInstance) {
 
   // Register session → agent mapping (called by each agent CLI on startup)

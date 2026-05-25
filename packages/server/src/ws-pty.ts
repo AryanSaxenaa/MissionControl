@@ -15,17 +15,30 @@ ptyWss.on('connection', (ws: WebSocket, agentId: string) => {
   if (buffered && ws.readyState === WebSocket.OPEN) ws.send(buffered)
 
   // Server → client: terminal output bytes
-  const disposable = pty.onData((data: string) => {
+  const dataDisposable = pty.onData((data: string) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(data)
   })
 
-  // Client → server: keystrokes from xterm.js
-  ws.on('message', (data) => {
-    pty.write(data.toString())
+  // When the PTY process exits, close the WS so xterm.js shows the session ended
+  const exitDisposable = pty.onExit(() => {
+    dataDisposable.dispose()
+    exitDisposable.dispose()
+    if (ws.readyState === WebSocket.OPEN) ws.close()
   })
 
-  ws.on('close', () => disposable.dispose())
-  ws.on('error', () => disposable.dispose())
+  // Client → server: keystrokes from xterm.js (guard against dead PTY)
+  ws.on('message', (data) => {
+    if (ptyInstances.has(agentId)) pty.write(data.toString())
+  })
+
+  ws.on('close', () => {
+    dataDisposable.dispose()
+    exitDisposable.dispose()
+  })
+  ws.on('error', () => {
+    dataDisposable.dispose()
+    exitDisposable.dispose()
+  })
 })
 
 export function handlePtyUpgrade(
