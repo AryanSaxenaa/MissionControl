@@ -11,6 +11,11 @@ export default defineConfig({
         target: 'ws://localhost:3000',
         ws: true,
       },
+      '/pty': {
+        target: 'ws://localhost:3000',
+        ws: true,
+      },
+      '/hooks': 'http://localhost:3000',
     },
   },
 })

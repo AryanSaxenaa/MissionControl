@@ -2,26 +2,47 @@ import * as pty from 'node-pty'
 import type { AgentKind } from '@missioncontrol/types'
 import { broadcast } from '../ws-events.js'
 
-// Maps agentId → pty instance
 export const ptyInstances = new Map<string, pty.IPty>()
 
 const IS_WINDOWS = process.platform === 'win32'
 
-// On Windows, npm-installed CLIs are .cmd wrapper scripts and cannot be spawned
-// directly by node-pty. We must invoke them via cmd.exe.
-function resolveSpawn(cmd: string, args: string[]): { cmd: string; args: string[] } {
+/**
+ * node-pty on Windows (ConPTY) does NOT resolve PATH — it requires
+ * either a full executable path or going through cmd.exe which does
+ * resolve PATH. We always use cmd.exe /c on Windows so PATH resolution
+ * works for both real .exe files and .cmd/.ps1 wrappers.
+ *
+ * Task delivery strategy per CLI:
+ *   claude-code  →  cmd /c claude  "task"   (task as positional arg)
+ *   codex        →  cmd /c codex   "task"   (task as positional arg)
+ *   opencode     →  cmd /c opencode run "task"
+ *   custom       →  cmd /k          (interactive shell; task injected as keystrokes)
+ */
+function buildSpawn(
+  kind: AgentKind,
+  task: string
+): { cmd: string; args: string[]; injectTask: boolean } {
   if (IS_WINDOWS) {
-    return { cmd: 'cmd.exe', args: ['/c', cmd, ...args] }
+    switch (kind) {
+      case 'claude-code':
+        return { cmd: 'cmd.exe', args: ['/c', 'claude', task],           injectTask: false }
+      case 'codex':
+        return { cmd: 'cmd.exe', args: ['/c', 'codex', task],            injectTask: false }
+      case 'opencode':
+        return { cmd: 'cmd.exe', args: ['/c', 'opencode', 'run', task],  injectTask: false }
+      case 'custom':
+        // /k keeps the shell alive after the injected command runs
+        return { cmd: 'cmd.exe', args: ['/k'],                           injectTask: true  }
+    }
   }
-  return { cmd, args }
-}
 
-// Raw command names — resolveSpawn is applied once at spawn time
-const CLI_COMMANDS: Record<AgentKind, { cmd: string; args: string[] }> = {
-  'claude-code': { cmd: 'claude',   args: [] },
-  'codex':       { cmd: 'codex',    args: [] },
-  'opencode':    { cmd: 'opencode', args: [] },
-  'custom':      { cmd: IS_WINDOWS ? 'cmd.exe' : 'bash', args: [] },
+  // Unix
+  switch (kind) {
+    case 'claude-code': return { cmd: 'claude',   args: [task],          injectTask: false }
+    case 'codex':       return { cmd: 'codex',    args: [task],          injectTask: false }
+    case 'opencode':    return { cmd: 'opencode', args: ['run', task],   injectTask: false }
+    case 'custom':      return { cmd: 'bash',     args: [],              injectTask: true  }
+  }
 }
 
 export async function spawnAgent(
@@ -31,9 +52,7 @@ export async function spawnAgent(
   task: string,
   port: number
 ): Promise<void> {
-  // custom kind already resolves to the shell directly; others need wrapping on Windows
-  const raw = CLI_COMMANDS[kind]
-  const { cmd, args } = (kind === 'custom') ? raw : resolveSpawn(raw.cmd, raw.args)
+  const { cmd, args, injectTask } = buildSpawn(kind, task)
 
   const instance = pty.spawn(cmd, args, {
     name: 'xterm-256color',
@@ -42,16 +61,20 @@ export async function spawnAgent(
     cwd: worktreePath,
     env: {
       ...process.env,
-      PORT: String(port),
-      MC_AGENT_ID: agentId,
+      PORT:          String(port),
+      MC_AGENT_ID:   agentId,
       MC_SERVER_URL: `http://localhost:${process.env.MC_SERVER_PORT ?? 3000}`,
     } as Record<string, string>,
   })
 
   ptyInstances.set(agentId, instance)
 
-  await waitForPrompt(instance)
-  await injectTask(instance, task)
+  // Custom interactive shell: wait for a prompt then inject the task as keystrokes
+  if (injectTask) {
+    await waitForShellPrompt(instance)
+    await new Promise(r => setTimeout(r, 200))
+    instance.write(task + '\r')
+  }
 
   instance.onExit(({ exitCode }) => {
     ptyInstances.delete(agentId)
@@ -64,9 +87,10 @@ export async function spawnAgent(
   })
 }
 
-function waitForPrompt(instance: pty.IPty): Promise<void> {
+/** Wait for a shell prompt ($, >, %) — only used for custom interactive shells. */
+function waitForShellPrompt(instance: pty.IPty): Promise<void> {
   return new Promise((resolve) => {
-    const timeout = setTimeout(resolve, 3000)
+    const timeout    = setTimeout(resolve, 5000)
     const disposable = instance.onData((data: string) => {
       if (data.includes('$') || data.includes('>') || data.includes('%')) {
         clearTimeout(timeout)
@@ -75,11 +99,6 @@ function waitForPrompt(instance: pty.IPty): Promise<void> {
       }
     })
   })
-}
-
-async function injectTask(instance: pty.IPty, task: string): Promise<void> {
-  await new Promise(r => setTimeout(r, 200))
-  instance.write(task + '\r')
 }
 
 export function killAgent(agentId: string): void {
