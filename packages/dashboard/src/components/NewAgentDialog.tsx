@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, FolderOpen } from 'lucide-react'
 
 type AgentKind = 'claude-code' | 'codex' | 'opencode' | 'custom'
 
@@ -9,11 +9,12 @@ interface NewAgentDialogProps {
 }
 
 export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
-  const [kind,    setKind]    = useState<AgentKind>('claude-code')
-  const [name,    setName]    = useState('')
-  const [task,    setTask]    = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState('')
+  const [kind,        setKind]        = useState<AgentKind>('claude-code')
+  const [name,        setName]        = useState('')
+  const [task,        setTask]        = useState('')
+  const [projectPath, setProjectPath] = useState('')
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState('')
 
   const spawn = async () => {
     if (!name.trim() || !task.trim()) { setError('Name and task required'); return }
@@ -22,7 +23,12 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
       const resp = await fetch('/api/agents/spawn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind, name: name.trim(), task: task.trim() }),
+        body: JSON.stringify({
+          kind,
+          name:        name.trim(),
+          task:        task.trim(),
+          projectPath: projectPath.trim() || undefined,
+        }),
       })
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({}))
@@ -75,6 +81,24 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
               placeholder="e.g. auth-refactor"
               className="w-full bg-black border border-[#2a2a2a] text-[#d4d4d4] text-sm font-mono px-3 py-2 outline-none focus:border-orange-500 placeholder-[#444] transition-colors"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs text-[#666] uppercase tracking-widest mb-2">
+              Project Path
+              <span className="text-[#444] ml-2 normal-case tracking-normal">(optional — defaults to missioncontrol repo)</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                value={projectPath}
+                onChange={e => setProjectPath(e.target.value)}
+                placeholder="C:\Users\you\your-project"
+                className="flex-1 bg-black border border-[#2a2a2a] text-[#d4d4d4] text-sm font-mono px-3 py-2 outline-none focus:border-orange-500 placeholder-[#444] transition-colors"
+              />
+              <div className="flex items-center px-3 border border-[#2a2a2a] text-[#555]" title="Enter path manually">
+                <FolderOpen size={14} />
+              </div>
+            </div>
           </div>
 
           <div>

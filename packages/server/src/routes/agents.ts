@@ -9,7 +9,7 @@ import { RegisterAgentSchema, HeartbeatSchema } from '../validators.js'
 import { createWorktree } from '../services/worktree-manager.js'
 import { assignPort, injectPortEnv } from '../services/port-registry.js'
 import { installHooks } from '../services/hook-installer.js'
-import { spawnAgent, killAgent } from '../services/pty-spawner.js'
+import { spawnAgent, killAgent, resizeAgent } from '../services/pty-spawner.js'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -29,16 +29,26 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
   // v3: Spawn an agent (creates worktree + PTY)
   fastify.post('/spawn', async (req, reply) => {
-    const { kind, task, name, parentAgentId } = req.body as {
+    const { kind, task, name, parentAgentId, projectPath } = req.body as {
       kind: AgentKind
       task: string
       name: string
       parentAgentId?: string
+      projectPath?: string   // absolute path to the user's project; defaults to repo root
+    }
+
+    // Validate projectPath if provided
+    if (projectPath) {
+      try {
+        await fs.access(projectPath)
+      } catch {
+        return reply.status(400).send({ error: `Project path not found: ${projectPath}` })
+      }
     }
 
     const agentId = `agent-${uuidv4()}`
 
-    // 1. Create worktree
+    // 1. Create worktree — branches off the mc repo but cwd is overridden to projectPath
     const worktreePath = await createWorktree(agentId, task)
 
     // 2. Assign port + inject into .env
@@ -68,14 +78,16 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       assignedPort,
       worktreePath,
       currentTask: task,
+      projectPath,   // stored so diff/merge can reference it
     }
     agents.set(agentId, newAgent)
 
     // 6. Broadcast before spawn (so dashboard has the record)
     broadcast({ type: 'agent:spawned', agent: newAgent })
 
-    // 7. Spawn PTY (non-blocking — fire and forget startup)
-    spawnAgent(agentId, kind, worktreePath, task, assignedPort).catch(err => {
+    // 7. Spawn PTY in projectPath if provided, else in the worktree itself
+    const spawnCwd = projectPath ?? worktreePath
+    spawnAgent(agentId, kind, spawnCwd, task, assignedPort).catch(err => {
       console.error(`[spawn] PTY failed for ${agentId}:`, err.message)
       broadcast({ type: 'agent:died', agentId })
     })
@@ -87,6 +99,14 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   fastify.post('/:id/kill', async (req, reply) => {
     const { id } = req.params as { id: string }
     killAgent(id)
+    return reply.send({ ok: true })
+  })
+
+  // Resize PTY to match xterm.js dimensions
+  fastify.post('/:id/resize', async (req, reply) => {
+    const { id }         = req.params as { id: string }
+    const { cols, rows } = req.body as { cols: number; rows: number }
+    resizeAgent(id, cols, rows)
     return reply.send({ ok: true })
   })
 

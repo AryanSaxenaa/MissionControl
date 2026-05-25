@@ -15,6 +15,7 @@ export interface AgentRecord {
   // v3 additions:
   assignedPort: number
   worktreePath: string
+  projectPath?: string   // user's project directory (overrides cwd for PTY spawn)
 }
 
 export interface IntentRecord {

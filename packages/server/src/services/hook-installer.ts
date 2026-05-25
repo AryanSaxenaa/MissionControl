@@ -37,12 +37,13 @@ export function buildCodexHookConfig(serverUrl: string): object {
 }
 
 export function buildOpenCodeConfig(serverUrl: string, agentId: string): object {
+  // opencode.json valid schema: https://opencode.ai/config.json
+  // `plugins` and `env` are NOT valid top-level keys and cause a startup crash.
+  // MC_SERVER_URL and MC_AGENT_ID are already injected into the PTY environment
+  // by pty-spawner.ts, so opencode receives them as process.env automatically.
+  // We only write a minimal valid config here to avoid the schema validation error.
   return {
-    plugins: ['@missioncontrol/opencode-plugin'],
-    env: {
-      MC_SERVER_URL: serverUrl,
-      MC_AGENT_ID: agentId,
-    },
+    $schema: 'https://opencode.ai/config.json',
   }
 }
 

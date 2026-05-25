@@ -24,12 +24,14 @@ const STATUS_TEXT: Record<string, string> = {
 export function AgentPane({ agentId, agentName, status, assignedPort, onMergeClick }: AgentPaneProps) {
   const termRef  = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<any>(null)
+  const fitRef   = useRef<any>(null)
   const wsRef    = useRef<WebSocket | null>(null)
 
   useEffect(() => {
     let term: any
     let fitAddon: any
     let ws: WebSocket
+    let ro: ResizeObserver | null = null
 
     async function init() {
       const { Terminal } = await import('@xterm/xterm')
@@ -38,23 +40,41 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
 
       term = new Terminal({
         theme: {
-          background: '#000000',
-          foreground: '#d4d4d4',
-          cursor:     '#f97316',
-          selectionBackground: '#f9731640',
+          background:         '#000000',
+          foreground:         '#d4d4d4',
+          cursor:             '#f97316',
+          selectionBackground:'#f9731640',
         },
-        fontFamily: '"JetBrains Mono", "Fira Mono", monospace',
-        fontSize: 13,
-        cursorBlink: true,
+        fontFamily:     '"JetBrains Mono", "Fira Mono", monospace',
+        fontSize:       13,
+        cursorBlink:    true,
+        scrollback:     5000,
         allowProposedApi: true,
       })
+
       fitAddon = new FitAddon()
       term.loadAddon(fitAddon)
+      xtermRef.current = term
+      fitRef.current   = fitAddon
+
       if (termRef.current) {
         term.open(termRef.current)
-        fitAddon.fit()
+
+        // Initial fit — defer one frame so the DOM has rendered
+        requestAnimationFrame(() => {
+          fitAddon.fit()
+          notifyPtyResize(term.cols, term.rows)
+        })
+
+        // Re-fit whenever the container size changes
+        ro = new ResizeObserver(() => {
+          try {
+            fitAddon.fit()
+            notifyPtyResize(term.cols, term.rows)
+          } catch { /* ignore mid-unmount errors */ }
+        })
+        ro.observe(termRef.current)
       }
-      xtermRef.current = term
 
       const u    = new URL(window.location.href)
       u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -67,13 +87,37 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
         if (e.data instanceof ArrayBuffer) term.write(new Uint8Array(e.data))
         else term.write(e.data as string)
       }
+      ws.onopen = () => {
+        // Sync PTY size with actual terminal once connected
+        notifyPtyResize(term.cols, term.rows)
+      }
+
       term.onData((data: string) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(data)
       })
+
+      // When user resizes the terminal, tell PTY server
+      term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
+        notifyPtyResize(cols, rows)
+      })
+    }
+
+    function notifyPtyResize(cols: number, rows: number) {
+      // POST to server so it can call pty.resize(cols, rows)
+      fetch(`/api/agents/${agentId}/resize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cols, rows }),
+      }).catch(() => {})
     }
 
     init().catch(console.error)
-    return () => { ws?.close(); term?.dispose() }
+
+    return () => {
+      ro?.disconnect()
+      ws?.close()
+      term?.dispose()
+    }
   }, [agentId])
 
   const dotClass  = STATUS_DOT[status]  ?? 'bg-[#555]'
@@ -102,8 +146,8 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
         </div>
       </div>
 
-      {/* Terminal */}
-      <div ref={termRef} className="flex-1 min-h-0 p-1 overflow-hidden bg-black" />
+      {/* Terminal — fills remaining height, scroll handled by xterm */}
+      <div ref={termRef} className="flex-1 min-h-0 overflow-hidden bg-black" />
     </div>
   )
 }

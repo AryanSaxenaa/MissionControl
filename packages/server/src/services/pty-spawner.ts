@@ -112,3 +112,7 @@ export function killAgent(agentId: string): void {
 export function writeToAgent(agentId: string, data: string): void {
   ptyInstances.get(agentId)?.write(data)
 }
+
+export function resizeAgent(agentId: string, cols: number, rows: number): void {
+  ptyInstances.get(agentId)?.resize(cols, rows)
+}
