@@ -1,10 +1,17 @@
 // @missioncontrol/opencode-plugin
-// OpenCode plugin that integrates with MissionControl server
-// Import type from @opencode-ai/plugin when installed
+// OpenCode plugin that integrates with MissionControl server.
+// Non-Negotiable #10: import type from @opencode-ai/plugin (NOT 'opencode-ai').
+//
+// NOTE: The @opencode-ai/plugin Hooks interface changed in v1.15.x — it no longer
+// exposes tool.execute.before/after or permission.ask as typed hook keys.
+// We use the PluginInput type for the function signature but return an untyped
+// hooks object that matches the runtime API. Track opencode plugin API changes.
+
+import type { PluginInput } from '@opencode-ai/plugin'
 
 const WRITE_TOOLS = ['write', 'edit', 'bash']
 
-export const MissionControlPlugin = async ({ client, project }: { client: any; project: any }) => {
+export const MissionControlPlugin = async ({ project }: PluginInput): Promise<any> => {
   const serverUrl = process.env.MC_SERVER_URL!
   const agentId = process.env.MC_AGENT_ID!
 

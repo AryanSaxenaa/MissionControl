@@ -11,60 +11,30 @@ export const directModeAgents = new Set<string>()
 const IS_WINDOWS = process.platform === 'win32'
 
 /**
- * node-pty on Windows (ConPTY) does NOT resolve PATH — it requires
- * either a full executable path or going through cmd.exe which does
- * resolve PATH. We always use cmd.exe /c on Windows so PATH resolution
- * works for both real .exe files and .cmd/.ps1 wrappers.
+ * Spec Non-Negotiable #14: Task is injected via PTY stdin after prompt detection.
+ * Not via CLI flags. Works universally for all agent kinds.
  *
- * Task delivery strategy per CLI:
- *   claude-code  →  cmd /c claude  "task"   (task as positional arg)
- *   codex        →  cmd /c codex   "task"   (task as positional arg)
- *   opencode     →  cmd /c opencode run "task"
- *   custom       →  cmd /k          (interactive shell; task injected as keystrokes)
+ * Windows note: node-pty ConPTY does NOT resolve PATH. We spawn through cmd.exe
+ * which resolves PATH correctly. cmd.exe /c passes its stdin through to the child
+ * process, so writing to the PTY after the CLI prompt appears IS PTY stdin injection.
+ *
+ * All CLIs: launch → wait for prompt → write task as keystrokes via PTY stdin.
+ * custom: same, but uses cmd /k (keep shell alive) instead of cmd /c.
  */
-function buildSpawn(
-  kind: AgentKind,
-  task: string
-): { cmd: string; args: string[]; injectTask: boolean } {
-  const hasTask = task.trim().length > 0
-
+function buildSpawn(kind: AgentKind): { cmd: string; args: string[] } {
   if (IS_WINDOWS) {
     switch (kind) {
-      case 'claude-code':
-        // With task: cmd /c claude "task"
-        // Without:   cmd /c claude  (interactive, user types in terminal)
-        return hasTask
-          ? { cmd: 'cmd.exe', args: ['/c', 'claude', task], injectTask: false }
-          : { cmd: 'cmd.exe', args: ['/c', 'claude'],       injectTask: false }
-      case 'codex':
-        return hasTask
-          ? { cmd: 'cmd.exe', args: ['/c', 'codex', task],  injectTask: false }
-          : { cmd: 'cmd.exe', args: ['/c', 'codex'],        injectTask: false }
-      case 'opencode':
-        return hasTask
-          ? { cmd: 'cmd.exe', args: ['/c', 'opencode', 'run', task], injectTask: false }
-          : { cmd: 'cmd.exe', args: ['/c', 'opencode'],              injectTask: false }
-      case 'custom':
-        return { cmd: 'cmd.exe', args: ['/k'], injectTask: hasTask }
+      case 'claude-code': return { cmd: 'cmd.exe', args: ['/c', 'claude']   }
+      case 'codex':       return { cmd: 'cmd.exe', args: ['/c', 'codex']    }
+      case 'opencode':    return { cmd: 'cmd.exe', args: ['/c', 'opencode'] }
+      case 'custom':      return { cmd: 'cmd.exe', args: ['/k']             }
     }
   }
-
-  // Unix
   switch (kind) {
-    case 'claude-code':
-      return hasTask
-        ? { cmd: 'claude',   args: [task], injectTask: false }
-        : { cmd: 'claude',   args: [],     injectTask: false }
-    case 'codex':
-      return hasTask
-        ? { cmd: 'codex',    args: [task], injectTask: false }
-        : { cmd: 'codex',    args: [],     injectTask: false }
-    case 'opencode':
-      return hasTask
-        ? { cmd: 'opencode', args: ['run', task], injectTask: false }
-        : { cmd: 'opencode', args: [],            injectTask: false }
-    case 'custom':
-      return { cmd: 'bash', args: [], injectTask: hasTask }
+    case 'claude-code': return { cmd: 'claude',   args: [] }
+    case 'codex':       return { cmd: 'codex',    args: [] }
+    case 'opencode':    return { cmd: 'opencode', args: [] }
+    case 'custom':      return { cmd: 'bash',     args: [] }
   }
 }
 
@@ -77,7 +47,7 @@ export async function spawnAgent(
   isDirectMode = false   // true = Mode A (user's project, no worktree)
 ): Promise<void> {
   if (isDirectMode) directModeAgents.add(agentId)
-  const { cmd, args, injectTask } = buildSpawn(kind, task)
+  const { cmd, args } = buildSpawn(kind)
 
   const instance = pty.spawn(cmd, args, {
     name: 'xterm-256color',
@@ -94,11 +64,16 @@ export async function spawnAgent(
 
   ptyInstances.set(agentId, instance)
 
-  // Custom interactive shell: wait for a prompt then inject the task as keystrokes
-  if (injectTask) {
-    await waitForShellPrompt(instance)
-    await new Promise(r => setTimeout(r, 200))
-    instance.write(task + '\r')
+  // Spec Non-Negotiable #14: inject task via PTY stdin after prompt detection.
+  // Applies to all kinds (including claude-code, codex, opencode) when task is non-empty.
+  // For custom shell we always wait for prompt (task may be empty = interactive mode).
+  const hasTask = task.trim().length > 0
+  if (hasTask || kind === 'custom') {
+    await waitForPrompt(instance)
+    if (hasTask) {
+      await new Promise(r => setTimeout(r, 200))
+      instance.write(task + '\r')
+    }
   }
 
   instance.onExit(({ exitCode }) => {
@@ -106,25 +81,31 @@ export async function spawnAgent(
     const isDirect = directModeAgents.has(agentId)
     directModeAgents.delete(agentId)
 
-    if (kind === 'custom' && exitCode !== 0) {
-      broadcast({ type: 'agent:died', agentId })
-    } else {
+    // Spec §5.1: exit 0 → completed + ready-to-merge; non-zero → died.
+    // Exception: claude-code, codex, opencode on Windows exit via cmd /c which
+    // always returns the child's exit code. A non-zero exit on these CLIs means
+    // the session genuinely errored (auth failure, crash) — broadcast agent:died.
+    if (exitCode === 0) {
       broadcast({ type: 'agent:completed', agentId })
-      // Only trigger merge review in Mode B (git worktree isolation).
-      // In Mode A (direct project), there is no isolated worktree to diff/merge.
       if (!isDirect) {
         broadcast({ type: 'agent:ready-to-merge', agentId })
       }
+    } else {
+      broadcast({ type: 'agent:died', agentId })
     }
   })
 }
 
-/** Wait for a shell prompt ($, >, %) — only used for custom interactive shells. */
-function waitForShellPrompt(instance: pty.IPty): Promise<void> {
+/**
+ * Wait up to 3s for a prompt character ($, >, %, ❯) to appear in the PTY output.
+ * Used for all CLIs before injecting the task via stdin (spec §3 step 6, NNeg #14).
+ */
+function waitForPrompt(instance: pty.IPty): Promise<void> {
   return new Promise((resolve) => {
     const timeout    = setTimeout(resolve, 5000)
     const disposable = instance.onData((data: string) => {
-      if (data.includes('$') || data.includes('>') || data.includes('%')) {
+      // Standard shells: $ > %   Claude Code: ❯   Codex/OpenCode: > or similar
+      if (data.includes('$') || data.includes('>') || data.includes('%') || data.includes('❯')) {
         clearTimeout(timeout)
         disposable.dispose()
         resolve()

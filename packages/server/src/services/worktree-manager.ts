@@ -53,7 +53,19 @@ export async function mergeWorktree(agentId: string, commitMessage: string): Pro
 
 export async function deleteWorktree(agentId: string): Promise<void> {
   const worktreePath = path.join(TREES_DIR, agentId)
+
+  // Resolve the actual branch name before removing the worktree
+  // (createWorktree names branches agent/{id}-{task-slug}, not just agent/{id})
+  let branchName: string | null = null
+  try {
+    const worktreeGit = simpleGit(worktreePath)
+    branchName = (await worktreeGit.revparse(['--abbrev-ref', 'HEAD'])).trim()
+  } catch { /* worktree may already be gone */ }
+
   await git.raw(['worktree', 'unlock', worktreePath]).catch(() => {})
   await git.raw(['worktree', 'remove', '--force', worktreePath]).catch(() => {})
-  await git.raw(['branch', '-D', `agent/${agentId}`]).catch(() => {})
+
+  if (branchName && branchName !== 'HEAD') {
+    await git.raw(['branch', '-D', branchName]).catch(() => {})
+  }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { HealthRing } from './HealthRing'
 
 interface AgentPaneProps {
   agentId: string
@@ -8,12 +9,6 @@ interface AgentPaneProps {
   onMergeClick: () => void
 }
 
-const STATUS_DOT: Record<string, string> = {
-  active:    'bg-orange-500 animate-pulse',
-  idle:      'bg-yellow-500',
-  failed:    'bg-red-500',
-  completed: 'bg-green-500',
-}
 const STATUS_TEXT: Record<string, string> = {
   active:    'text-orange-500',
   idle:      'text-yellow-500',
@@ -120,7 +115,6 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
     }
   }, [agentId])
 
-  const dotClass  = STATUS_DOT[status]  ?? 'bg-[#555]'
   const textClass = STATUS_TEXT[status] ?? 'text-[#888]'
 
   return (
@@ -129,7 +123,7 @@ export function AgentPane({ agentId, agentName, status, assignedPort, onMergeCli
       {/* Status bar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-[#171717] flex-shrink-0">
         <div className="flex items-center gap-3">
-          <span className={`w-2 h-2 rounded-full ${dotClass}`} />
+          <HealthRing status={status} size={16} />
           <span className="text-white text-sm font-mono">{agentName}</span>
           <span className={`text-xs uppercase tracking-wider ${textClass}`}>{status}</span>
         </div>

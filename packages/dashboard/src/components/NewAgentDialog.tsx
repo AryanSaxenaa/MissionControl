@@ -17,6 +17,7 @@ interface NewAgentDialogProps {
 
 export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
   const [kind,        setKind]        = useState<AgentKind>('claude-code')
+  const [task,        setTask]        = useState('')
   const [projectPath, setProjectPath] = useState('')
   const [loading,     setLoading]     = useState(false)
   const [error,       setError]       = useState('')
@@ -32,7 +33,7 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
         body: JSON.stringify({
           kind,
           name,
-          task:        '',
+          task:        task.trim(),
           projectPath: projectPath.trim(),
         }),
       })
@@ -66,7 +67,7 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
         {/* Body */}
         <div className="px-7 py-6 space-y-5">
 
-          {/* Kind picker — big clickable tiles */}
+          {/* Kind picker */}
           <div>
             <label className="block text-xs text-[#666] uppercase tracking-widest mb-3">AI</label>
             <div className="grid grid-cols-2 gap-2">
@@ -86,7 +87,7 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
             </div>
           </div>
 
-          {/* Project path — required */}
+          {/* Project path */}
           <div>
             <label className="block text-xs text-[#666] uppercase tracking-widest mb-2">
               Project Path
@@ -98,6 +99,21 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
               className="w-full bg-black border border-[#2a2a2a] text-[#d4d4d4] text-sm font-mono px-3 py-2 outline-none focus:border-orange-500 placeholder-[#444] transition-colors"
             />
             <p className="text-[#444] text-xs mt-1">Absolute path to the project the AI will work in</p>
+          </div>
+
+          {/* Task description — per spec §3, user enters this */}
+          <div>
+            <label className="block text-xs text-[#666] uppercase tracking-widest mb-2">
+              Task
+              <span className="text-[#444] ml-2 normal-case tracking-normal text-[10px]">optional — leave blank for interactive mode</span>
+            </label>
+            <textarea
+              value={task}
+              onChange={e => setTask(e.target.value)}
+              placeholder="e.g. Fix all TypeScript errors in src/"
+              rows={2}
+              className="w-full bg-black border border-[#2a2a2a] text-[#d4d4d4] text-sm font-mono px-3 py-2 outline-none focus:border-orange-500 placeholder-[#444] resize-none transition-colors"
+            />
           </div>
 
           {error && <p className="text-xs text-red-500 font-mono">{error}</p>}
