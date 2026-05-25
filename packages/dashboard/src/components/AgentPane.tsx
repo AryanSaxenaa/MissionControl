@@ -10,16 +10,15 @@ interface AgentPaneProps {
   onMergeClick: () => void
 }
 
-// Distinct accent colors per agent — cycles through the palette
 const AGENT_COLORS = [
-  '#f97316', // orange
-  '#3b82f6', // blue
-  '#a855f7', // purple
-  '#10b981', // emerald
-  '#f59e0b', // amber
-  '#06b6d4', // cyan
-  '#ec4899', // pink
-  '#84cc16', // lime
+  '#f97316',
+  '#3b82f6',
+  '#a855f7',
+  '#10b981',
+  '#f59e0b',
+  '#06b6d4',
+  '#ec4899',
+  '#84cc16',
 ] as const
 
 const STATUS_TEXT: Record<string, string> = {
@@ -38,17 +37,24 @@ export function AgentPane({ agentId, agentName, status, assignedPort, colorIndex
   const accentColor = AGENT_COLORS[colorIndex % AGENT_COLORS.length]
 
   useEffect(() => {
-    let term: any
-    let fitAddon: any
-    let ws: WebSocket
-    let ro: ResizeObserver | null = null
+    // Track cancellation so async init doesn't use stale closures.
+    // React StrictMode (and any unmount/remount) fires cleanup synchronously
+    // before init() resolves — without this guard the old WS is never closed,
+    // leaving two subscribers on the same PTY so every keystroke reaches both.
+    let cancelled = false
+    const cleanups: Array<() => void> = []
 
     async function init() {
       const { Terminal } = await import('@xterm/xterm')
-      const { FitAddon } = await import('@xterm/addon-fit')
-      await import('@xterm/xterm/css/xterm.css')
+      if (cancelled) return
 
-      term = new Terminal({
+      const { FitAddon } = await import('@xterm/addon-fit')
+      if (cancelled) return
+
+      await import('@xterm/xterm/css/xterm.css')
+      if (cancelled) return
+
+      const term = new Terminal({
         theme: {
           background:          '#000000',
           foreground:          '#d4d4d4',
@@ -61,29 +67,40 @@ export function AgentPane({ agentId, agentName, status, assignedPort, colorIndex
         scrollback:      5000,
         allowProposedApi: true,
       })
+      cleanups.push(() => term.dispose())
 
-      fitAddon = new FitAddon()
+      const fitAddon = new FitAddon()
       term.loadAddon(fitAddon)
       xtermRef.current = term
       fitRef.current   = fitAddon
 
-      if (termRef.current) {
-        term.open(termRef.current)
-        requestAnimationFrame(() => {
-          fitAddon.fit()
-          notifyPtyResize(term.cols, term.rows)
-        })
-        ro = new ResizeObserver(() => {
-          try { fitAddon.fit(); notifyPtyResize(term.cols, term.rows) } catch { /* ignore */ }
-        })
-        ro.observe(termRef.current)
-      }
+      if (!termRef.current || cancelled) return
+      term.open(termRef.current)
+
+      requestAnimationFrame(() => {
+        if (cancelled) return
+        fitAddon.fit()
+        notifyPtyResize(term.cols, term.rows)
+      })
+
+      const ro = new ResizeObserver(() => {
+        if (cancelled) return
+        try { fitAddon.fit(); notifyPtyResize(term.cols, term.rows) } catch { /* ignore */ }
+      })
+      ro.observe(termRef.current)
+      cleanups.push(() => ro.disconnect())
+
+      if (cancelled) return
 
       const u    = new URL(window.location.href)
       u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
       u.pathname = `/pty/${agentId}`
-      ws         = new WebSocket(u.toString())
+      const ws   = new WebSocket(u.toString())
       wsRef.current = ws
+      cleanups.push(() => {
+        wsRef.current = null
+        if (ws.readyState !== WebSocket.CLOSED) ws.close()
+      })
 
       ws.binaryType = 'arraybuffer'
       ws.onmessage = (e: MessageEvent) => {
@@ -93,14 +110,15 @@ export function AgentPane({ agentId, agentName, status, assignedPort, colorIndex
       ws.onopen = () => notifyPtyResize(term.cols, term.rows)
 
       term.onData((data: string) => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(data)
+        if (!cancelled && ws.readyState === WebSocket.OPEN) ws.send(data)
       })
       term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
-        notifyPtyResize(cols, rows)
+        if (!cancelled) notifyPtyResize(cols, rows)
       })
     }
 
     function notifyPtyResize(cols: number, rows: number) {
+      if (cancelled) return
       fetch(`/api/agents/${agentId}/resize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,7 +127,11 @@ export function AgentPane({ agentId, agentName, status, assignedPort, colorIndex
     }
 
     init().catch(console.error)
-    return () => { ro?.disconnect(); ws?.close(); term?.dispose() }
+
+    return () => {
+      cancelled = true
+      cleanups.forEach(fn => fn())
+    }
   }, [agentId])
 
   const textClass = STATUS_TEXT[status] ?? 'text-[#666]'
@@ -119,7 +141,6 @@ export function AgentPane({ agentId, agentName, status, assignedPort, colorIndex
       className="flex flex-col overflow-hidden h-full bg-[#020202] transition-colors"
       style={{ border: `1px solid ${accentColor}40` }}
     >
-      {/* Status bar — accent-colored top border */}
       <div
         className="flex items-center justify-between px-3 py-1.5 flex-shrink-0"
         style={{
@@ -158,7 +179,6 @@ export function AgentPane({ agentId, agentName, status, assignedPort, colorIndex
         </div>
       </div>
 
-      {/* Terminal */}
       <div ref={termRef} className="flex-1 min-h-0 overflow-hidden bg-black" />
     </div>
   )
