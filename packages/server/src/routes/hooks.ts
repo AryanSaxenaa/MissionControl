@@ -3,8 +3,11 @@ import type { HookPayload } from '@missioncontrol/types'
 import { detectConflicts } from '../services/conflict-detector.js'
 import { broadcast } from '../ws-events.js'
 import { activeIntents } from '../state.js'
-import { recallFailuresForTarget, ingestContext } from '../hydra.js'
+import { recallFailuresForTarget, ingestContext, ingestDecision, ingestFailure } from '../hydra.js'
 import { trackConflict } from './conflicts.js'
+import { recentDecisions } from './decisions.js'
+import { recentFailures } from './failures.js'
+import type { DecisionItem, FailureItem } from '@missioncontrol/types'
 
 const WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'Bash']
 
@@ -103,13 +106,14 @@ export async function hooksRoutes(app: FastifyInstance) {
   // PostToolUse — runs after every Write/Edit/Bash
   app.post('/hooks/post-tool-use', async (req, reply) => {
     const body = req.body as HookPayload
-    const { tool_name, tool_input, session_id } = body
+    const { tool_name, tool_input, tool_response, session_id } = body
 
     if (!WRITE_TOOLS.includes(tool_name)) return reply.send({})
 
     const agentId = sessionToAgent.get(session_id)
     if (!agentId) return reply.send({})
 
+    // Complete the pending intent
     const intentId = sessionIntents.get(session_id)
     if (intentId) {
       const intent = activeIntents.get(intentId)
@@ -122,13 +126,62 @@ export async function hooksRoutes(app: FastifyInstance) {
     }
 
     const target = extractTarget(tool_input)
+    const description = tool_input.description ?? `${tool_name} on ${target}`
+
+    // 1. Always ingest context into HydraDB — this is what populates the Knowledge Graph
     ingestContext({
       agentId,
-      content: `Modified ${target}: ${tool_input.description ?? tool_name + ' operation'}`,
+      content: `Modified ${target}: ${description}`,
       scope: target,
       tags: ['modification', tool_name.toLowerCase()],
       confidence: 0.9,
     }).catch(() => {})
+
+    // 2. Auto-ingest a decision record into HydraDB when a file is written.
+    //    This makes the Decision Log and Why? panel populate automatically from
+    //    every agent write — no SDK instrumentation required.
+    if (tool_name !== 'Bash') {
+      const summary = `Agent ${agentId} modified ${target}: ${description}`
+      ingestDecision({
+        agentId,
+        summary,
+        reasoning: description,
+        alternativesConsidered: [],
+        affectedFiles: [target],
+        tags: [tool_name.toLowerCase(), 'auto'],
+      }).then(sourceId => {
+        const item: DecisionItem = { sourceId, agentId, summary, createdAt: Date.now() }
+        recentDecisions.unshift(item)
+        if (recentDecisions.length > 200) recentDecisions.pop()
+        broadcast({ type: 'decision:recorded', sourceId, agentId, summary })
+      }).catch(() => {})
+    }
+
+    // 3. Auto-detect bash failures from tool_response exit codes.
+    //    If a Bash command returns non-zero, record it as a failure in HydraDB.
+    //    This makes the Failure Memory populate automatically from real command errors.
+    if (tool_name === 'Bash' && tool_response?.content) {
+      const responseText = typeof tool_response.content === 'string'
+        ? tool_response.content
+        : JSON.stringify(tool_response.content)
+      const isFailure = /exit code [1-9]|error:|Error:|FAILED|failed|exception|Exception/i.test(responseText)
+      if (isFailure) {
+        const errorSnippet = responseText.slice(0, 400)
+        ingestFailure({
+          agentId,
+          task: description,
+          target,
+          errorType: 'bash-error',
+          errorMessage: errorSnippet,
+          context: `Command: ${tool_input.command ?? target}`,
+        }).then(sourceId => {
+          const item: FailureItem = { sourceId, agentId, target, errorType: 'bash-error', createdAt: Date.now() }
+          recentFailures.unshift(item)
+          if (recentFailures.length > 500) recentFailures.pop()
+          broadcast({ type: 'failure:recorded', sourceId, agentId, target, errorType: 'bash-error' })
+        }).catch(() => {})
+      }
+    }
 
     return reply.send({})
   })

@@ -7,6 +7,7 @@ import DecisionLog from './views/DecisionLog'
 import ConflictFeed from './views/ConflictFeed'
 import FailureMemory from './views/FailureMemory'
 import { Activity, GitBranch, BrainCircuit, ShieldAlert, Database } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 const SERVER_URL = import.meta.env.VITE_MC_SERVER_URL || window.location.origin
 
@@ -46,6 +47,15 @@ export default function App() {
   const agents    = [...agentsMap.values()]
   const active    = agents.filter(a => a.status === 'active').length
   const conflicts = activeConflicts.length
+
+  // HydraDB memory node count — polled every 30s, shown in status bar
+  const [memoryNodes, setMemoryNodes] = useState<number>(0)
+  useEffect(() => {
+    const poll = () => fetch('/api/memory/stats').then(r => r.json()).then(d => setMemoryNodes(d.totalSources ?? 0)).catch(() => {})
+    poll()
+    const id = setInterval(poll, 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   const topPermission = pendingPermissions[0]
   const topAgent      = topPermission ? agentsMap.get(topPermission.agentId) : undefined
@@ -119,6 +129,7 @@ export default function App() {
           <TopMetric label="Conflicts" value={String(conflicts)} warn={conflicts > 0} />
           <TopMetric label="Intents"   value={String(activeIntentsSize)} warn={false} />
           <TopMetric label="Decisions" value={String(decisionsLength)} warn={false} />
+          <TopMetric label="◈ Memory"  value={String(memoryNodes)} warn={false} />
           {pendingPermissions.length > 0 && (
             <span className="text-orange-400 uppercase tracking-wider text-xs animate-pulse">
               ⚠ {pendingPermissions.length} permission{pendingPermissions.length > 1 ? 's' : ''} pending

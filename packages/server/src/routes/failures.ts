@@ -6,7 +6,7 @@ import { RecordFailureSchema, CheckFailuresSchema } from '../validators.js'
 import type { FailureItem } from '@missioncontrol/types'
 
 // In-memory ring buffer — last 500 failures this session
-const recentFailures: FailureItem[] = []
+export const recentFailures: FailureItem[] = []
 
 export default async function failureRoutes(fastify: FastifyInstance) {
   fastify.get('/', async () => {

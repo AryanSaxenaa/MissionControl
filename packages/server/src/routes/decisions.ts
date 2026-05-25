@@ -5,7 +5,7 @@ import { RecordDecisionSchema, WhyQuerySchema } from '../validators.js'
 import type { DecisionItem } from '@missioncontrol/types'
 
 // In-memory ring buffer — last 200 decisions this session
-const recentDecisions: DecisionItem[] = []
+export const recentDecisions: DecisionItem[] = []
 
 export default async function decisionRoutes(fastify: FastifyInstance) {
   fastify.get('/', async () => {

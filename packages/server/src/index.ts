@@ -8,6 +8,7 @@ import { handlePtyUpgrade } from './ws-pty.js'
 import { agents, activeIntents } from './state.js'
 import { getGraphData } from './services/graph-traversal.js'
 import { startHealthMonitor } from './services/health-monitor.js'
+import { listSources } from './hydra.js'
 
 import agentRoutes from './routes/agents.js'
 import contextRoutes from './routes/context.js'
@@ -62,6 +63,20 @@ fastify.get('/api/status', async () => ({
   intents: activeIntents.size,
   uptime: process.uptime(),
 }))
+
+// HydraDB memory stats — surfaced in the dashboard status bar
+fastify.get('/api/memory/stats', async (req, reply) => {
+  try {
+    const sources = await listSources()
+    const items = (sources as any).sources ?? (sources as any).items ?? []
+    return {
+      totalSources: items.length,
+      subTenants: [...new Set(items.map((s: any) => s.sub_tenant_id ?? 'shared'))],
+    }
+  } catch {
+    return { totalSources: 0, subTenants: [] }
+  }
+})
 
 try {
   await fastify.listen({ port: PORT, host: '0.0.0.0' })

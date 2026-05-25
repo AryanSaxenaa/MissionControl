@@ -1,11 +1,50 @@
-import Anthropic from '@anthropic-ai/sdk'
+/**
+ * Conflict detector — three-step pipeline per spec §10.
+ *
+ * Step 1 (file): in-memory, synchronous.
+ * Step 2 (semantic): uses OpenRouter owl-alpha instead of Anthropic.
+ *                    owl-alpha is reasoning-optimised and free of Anthropic dependency.
+ *                    Falls back gracefully if OPENROUTER_API_KEY is absent.
+ * Step 3 (architectural): HydraDB recall + OpenRouter owl-alpha.
+ *                         HydraDB already has graph-enriched decision memory —
+ *                         there is no valid reason to use a separate LLM API for this.
+ */
+
 import { IntentRecord, activeIntents, getIntentsForTarget, pathsOverlap } from '../state.js'
-import { recallDecisionsForTarget } from '../hydra.js'
+import { recallDecisionsForTarget, whyQuery } from '../hydra.js'
 import type { ConflictResult } from '@missioncontrol/types'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
 export { ConflictResult, pathsOverlap }
+
+const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
+const OPENROUTER_MODEL = 'openrouter/owl-alpha'
+
+async function openRouterChat(prompt: string, maxTokens = 150): Promise<string> {
+  const key = process.env.OPENROUTER_API_KEY
+  if (!key) return ''
+  try {
+    const resp = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://github.com/missioncontrol',
+        'X-Title': 'MissionControl Conflict Detector',
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!resp.ok) return ''
+    const data = await resp.json() as any
+    return data.choices?.[0]?.message?.content?.trim() ?? ''
+  } catch {
+    return ''
+  }
+}
 
 export async function detectConflicts(newIntent: IntentRecord): Promise<ConflictResult[]> {
   const conflicts: ConflictResult[] = []
@@ -14,6 +53,7 @@ export async function detectConflicts(newIntent: IntentRecord): Promise<Conflict
     i => i.id !== newIntent.id && i.agentId !== newIntent.agentId
   )
 
+  // Step 1 — file-level: two agents writing to the same target = critical
   const fileConflicts = overlappingIntents.filter(
     i => isWriteOperation(i.action) && isWriteOperation(newIntent.action)
   )
@@ -30,15 +70,17 @@ export async function detectConflicts(newIntent: IntentRecord): Promise<Conflict
     })
   }
 
-  const semanticCandidates = overlappingIntents.filter(
-    i => !fileConflicts.includes(i)
-  )
-
-  // Parallelize semantic checks
+  // Step 2 — semantic: use OpenRouter owl-alpha (replaces Anthropic)
+  const semanticCandidates = overlappingIntents.filter(i => !fileConflicts.includes(i))
   const semanticChecks = await Promise.all(
     semanticCandidates.map(async (candidate) => {
-      const isConflicting = await checkSemanticConflict(newIntent, candidate)
-      return isConflicting ? candidate : null
+      const answer = await openRouterChat(
+        `Do these two coding agent intents semantically conflict? Answer YES or NO only.\n` +
+        `Intent A (agent: ${newIntent.agentId}): ${newIntent.description} [target: ${newIntent.target}]\n` +
+        `Intent B (agent: ${candidate.agentId}): ${candidate.description} [target: ${candidate.target}]`,
+        50
+      )
+      return answer.toUpperCase().startsWith('YES') ? candidate : null
     })
   )
 
@@ -54,67 +96,38 @@ export async function detectConflicts(newIntent: IntentRecord): Promise<Conflict
     })
   }
 
+  // Step 3 — architectural: HydraDB recall + OpenRouter owl-alpha
+  // HydraDB already has graph-enriched decision memory.
+  // We query it first, then let owl-alpha reason about the contradiction.
   if (conflicts.filter(c => c.severity === 'critical').length === 0) {
     try {
       const decisions = await recallDecisionsForTarget(newIntent.target)
       const decisionText = decisions.chunks?.map((c: any) => c.chunk_content).join('\n') ?? ''
 
       if (decisionText.trim()) {
-        const architecturalConflict = await checkArchitecturalConflict(newIntent, decisionText)
-        if (architecturalConflict) {
+        const answer = await openRouterChat(
+          `Does this agent intent contradict any of the architectural decisions below?\n` +
+          `Answer "NO" if no conflict, or one sentence describing the contradiction.\n\n` +
+          `Intent: ${newIntent.description} [target: ${newIntent.target}]\n\n` +
+          `Architectural decisions from HydraDB memory:\n${decisionText}`,
+          150
+        )
+        if (answer && !answer.toUpperCase().startsWith('NO')) {
           conflicts.push({
             id: `conflict-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             severity: 'warning',
             kind: 'architectural',
-            description: `${newIntent.description} may contradict architectural decisions: ${architecturalConflict}`,
+            description: `${newIntent.description} may contradict architectural decisions: ${answer}`,
             agentIds: [newIntent.agentId],
             intentIds: [newIntent.id],
             createdAt: Date.now(),
           })
         }
       }
-    } catch {
-      // architectural check failed (timeout or network) — skip, not critical
-    }
+    } catch { /* architectural check is non-fatal */ }
   }
 
   return conflicts
-}
-
-async function checkSemanticConflict(a: IntentRecord, b: IntentRecord): Promise<boolean> {
-  if (!anthropic.apiKey) return false
-  try {
-    const resp = await anthropic.messages.create({
-      model: 'claude-3-haiku-20240307',
-      max_tokens: 100,
-      messages: [{
-        role: 'user',
-        content: `Do these two coding agent intents semantically conflict? Answer YES or NO only.\nIntent A (agent: ${a.agentId}): ${a.description} [target: ${a.target}]\nIntent B (agent: ${b.agentId}): ${b.description} [target: ${b.target}]`,
-      }],
-    })
-    const text = resp.content[0].type === 'text' ? resp.content[0].text : ''
-    return text.trim().toUpperCase().startsWith('YES')
-  } catch {
-    return false
-  }
-}
-
-async function checkArchitecturalConflict(intent: IntentRecord, decisionContext: string): Promise<string | null> {
-  if (!anthropic.apiKey) return null
-  try {
-    const resp = await anthropic.messages.create({
-      model: 'claude-3-haiku-20240307',
-      max_tokens: 150,
-      messages: [{
-        role: 'user',
-        content: `Does this agent intent contradict any of the architectural decisions listed below?\nAnswer "NO" if no conflict, or a single sentence describing the contradiction if yes.\n\nIntent: ${intent.description} [target: ${intent.target}]\n\nArchitectural decisions:\n${decisionContext}`,
-      }],
-    })
-    const text = resp.content[0].type === 'text' ? resp.content[0].text.trim() : ''
-    return text.toUpperCase().startsWith('NO') ? null : text
-  } catch {
-    return null
-  }
 }
 
 function isWriteOperation(action: IntentRecord['action']): boolean {
