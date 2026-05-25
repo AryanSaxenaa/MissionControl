@@ -140,16 +140,17 @@ export function AgentPane({ agentId, agentName, status, assignedPort, colorIndex
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[#444] text-[10px] font-mono">:{assignedPort}</span>
-          {status === 'completed' && (
+          {(status === 'completed' || status === 'active') && (
             <button
               onClick={onMergeClick}
               className="px-2 py-0.5 text-[10px] uppercase tracking-wider transition-all"
               style={{
                 border: `1px solid ${accentColor}`,
                 color: accentColor,
+                opacity: status === 'active' ? 0.6 : 1,
               }}
-              onMouseEnter={e => { (e.target as HTMLElement).style.background = accentColor; (e.target as HTMLElement).style.color = '#000' }}
-              onMouseLeave={e => { (e.target as HTMLElement).style.background = ''; (e.target as HTMLElement).style.color = accentColor }}
+              onMouseEnter={e => { (e.target as HTMLElement).style.background = accentColor; (e.target as HTMLElement).style.color = '#000'; (e.target as HTMLElement).style.opacity = '1' }}
+              onMouseLeave={e => { (e.target as HTMLElement).style.background = ''; (e.target as HTMLElement).style.color = accentColor; (e.target as HTMLElement).style.opacity = status === 'active' ? '0.6' : '1' }}
             >
               Review &amp; Merge
             </button>
