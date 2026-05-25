@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @missioncontrol/server dev",
+    "dev:dashboard": "pnpm --filter @missioncontrol/dashboard dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "cleanup": "node scripts/cleanup.mjs"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
