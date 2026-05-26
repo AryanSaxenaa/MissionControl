@@ -1,61 +1,86 @@
 import * as pty from 'node-pty'
 import type { AgentKind } from '@missioncontrol/types'
-import { broadcast } from '../ws-events.js'
+import { broadcast, type WSEvent } from '../ws-events.js'
 import { appendBuffer, clearBuffer } from '../pty-buffer.js'
 
 export const ptyInstances = new Map<string, pty.IPty>()
 
 const IS_WINDOWS = process.platform === 'win32'
 
-/**
- * Two spawn modes:
- *
- * WITH task → non-interactive: pass task via CLI flag so the process exits
- *   when done. This triggers onExit → agent:completed → "Review & Merge".
- *   claude-code: `claude -p "<task>"`
- *   codex:       `codex "<task>"`          (positional arg, exits after run)
- *   opencode:    `opencode run "<task>"`   (run subcommand, exits after run)
- *
- * WITHOUT task → interactive TUI: user types freely. Process stays alive.
- *   Status stays `active` until user exits the TUI manually. The
- *   "Review & Merge" button is always visible so the user can trigger
- *   merge whenever they're satisfied.
- *
- * Windows: node-pty ConPTY doesn't resolve PATH — wrap everything in cmd.exe.
- *   /c = run then exit (used for non-interactive task runs)
- *   /k = run then keep alive (used for interactive sessions)
- */
-function buildSpawn(kind: AgentKind, task: string): { cmd: string; args: string[] } {
-  const hasTask = task.trim().length > 0
+interface SpawnStrategy {
+  cmd: string
+  args: string[]
+  waitForPrompt: boolean
+  exitEvents(exitCode: number, agentId: string): WSEvent[]
+}
 
-  if (IS_WINDOWS) {
-    if (!hasTask || kind === 'custom') {
-      // Interactive / custom shell — stay alive
-      const cli = kind === 'custom' ? '' : kind === 'claude-code' ? 'claude' : kind === 'codex' ? 'codex' : 'opencode'
-      return { cmd: 'cmd.exe', args: kind === 'custom' ? ['/k'] : ['/k', cli] }
-    }
-    // Non-interactive: pass task via CLI flag, process exits when done
-    switch (kind) {
-      case 'claude-code': return { cmd: 'cmd.exe', args: ['/c', 'claude', '-p', task] }
-      case 'codex':       return { cmd: 'cmd.exe', args: ['/c', 'codex',  task] }
-      case 'opencode':    return { cmd: 'cmd.exe', args: ['/c', 'opencode', 'run', task] }
+function exitEventsNonInteractive(exitCode: number, agentId: string): WSEvent[] {
+  if (exitCode === 0) return [
+    { type: 'agent:completed', agentId },
+    { type: 'agent:ready-to-merge', agentId },
+  ]
+  return [{ type: 'agent:died', agentId }]
+}
+
+function exitEventsInteractive(agentId: string): WSEvent[] {
+  return [
+    { type: 'agent:completed', agentId },
+    { type: 'agent:ready-to-merge', agentId },
+  ]
+}
+
+function exitEventsCustom(exitCode: number, agentId: string): WSEvent[] {
+  if (exitCode === 0) return [
+    { type: 'agent:completed', agentId },
+    { type: 'agent:ready-to-merge', agentId },
+  ]
+  return [{ type: 'agent:died', agentId }]
+}
+
+function getSpawnStrategy(kind: AgentKind, task: string): SpawnStrategy {
+  const hasTask = task.trim().length > 0
+  return IS_WINDOWS
+    ? getWindowsStrategy(kind, hasTask, task)
+    : getUnixStrategy(kind, hasTask, task)
+}
+
+function getWindowsStrategy(kind: AgentKind, hasTask: boolean, task: string): SpawnStrategy {
+  if (!hasTask || kind === 'custom') {
+    const cli = kind === 'custom' ? '' : kind === 'claude-code' ? 'claude' : kind === 'codex' ? 'codex' : 'opencode'
+    return {
+      cmd: 'cmd.exe',
+      args: kind === 'custom' ? ['/k'] : ['/k', cli],
+      waitForPrompt: kind === 'custom',
+      exitEvents: kind === 'custom'
+        ? (ec, aid) => exitEventsCustom(ec, aid)
+        : (_ec, aid) => exitEventsInteractive(aid),
     }
   }
 
+  const t = task
+  switch (kind) {
+    case 'claude-code': return { cmd: 'cmd.exe', args: ['/c', 'claude', '-p', t], waitForPrompt: false, exitEvents: exitEventsNonInteractive }
+    case 'codex':       return { cmd: 'cmd.exe', args: ['/c', 'codex',  t],    waitForPrompt: false, exitEvents: exitEventsNonInteractive }
+    case 'opencode':    return { cmd: 'cmd.exe', args: ['/c', 'opencode', 'run', t], waitForPrompt: false, exitEvents: exitEventsNonInteractive }
+  }
+}
+
+function getUnixStrategy(kind: AgentKind, hasTask: boolean, task: string): SpawnStrategy {
   if (!hasTask || kind === 'custom') {
     switch (kind) {
-      case 'claude-code': return { cmd: 'claude',   args: [] }
-      case 'codex':       return { cmd: 'codex',    args: [] }
-      case 'opencode':    return { cmd: 'opencode', args: [] }
-      case 'custom':      return { cmd: 'bash',     args: [] }
+      case 'claude-code': return { cmd: 'claude',   args: [], waitForPrompt: false, exitEvents: (_ec, aid) => exitEventsInteractive(aid) }
+      case 'codex':       return { cmd: 'codex',    args: [], waitForPrompt: false, exitEvents: (_ec, aid) => exitEventsInteractive(aid) }
+      case 'opencode':    return { cmd: 'opencode', args: [], waitForPrompt: false, exitEvents: (_ec, aid) => exitEventsInteractive(aid) }
+      case 'custom':      return { cmd: 'bash',     args: [], waitForPrompt: true,  exitEvents: exitEventsCustom }
     }
   }
-  // Non-interactive on Linux/Mac
+
+  const t = task
   switch (kind) {
-    case 'claude-code': return { cmd: 'claude',   args: ['-p', task] }
-    case 'codex':       return { cmd: 'codex',    args: [task] }
-    case 'opencode':    return { cmd: 'opencode', args: ['run', task] }
-    default:            return { cmd: 'bash',     args: [] }
+    case 'claude-code': return { cmd: 'claude',   args: ['-p', t],    waitForPrompt: false, exitEvents: exitEventsNonInteractive }
+    case 'codex':       return { cmd: 'codex',    args: [t],          waitForPrompt: false, exitEvents: exitEventsNonInteractive }
+    case 'opencode':    return { cmd: 'opencode', args: ['run', t],   waitForPrompt: false, exitEvents: exitEventsNonInteractive }
+    default:            return { cmd: 'bash',     args: [],           waitForPrompt: false, exitEvents: (_ec, aid) => exitEventsInteractive(aid) }
   }
 }
 
@@ -66,10 +91,9 @@ export async function spawnAgent(
   task: string,
   port: number
 ): Promise<void> {
-  const hasTask        = task.trim().length > 0
-  const { cmd, args }  = buildSpawn(kind, task)
+  const strategy = getSpawnStrategy(kind, task)
 
-  const instance = pty.spawn(cmd, args, {
+  const instance = pty.spawn(strategy.cmd, strategy.args, {
     name: 'xterm-256color',
     cols: 220,
     rows: 50,
@@ -83,49 +107,21 @@ export async function spawnAgent(
   })
 
   ptyInstances.set(agentId, instance)
-
-  // Buffer all output for playback when a new WebSocket connects mid-session
   instance.onData((data: string) => appendBuffer(agentId, data))
 
-  // Interactive custom shells: wait for prompt before injecting nothing
-  // (kept so custom agents get their PTY warmed up before user types)
-  if (!hasTask && kind === 'custom') {
+  if (strategy.waitForPrompt) {
     await waitForPrompt(instance)
   }
 
   instance.onExit(({ exitCode }) => {
     ptyInstances.delete(agentId)
     clearBuffer(agentId)
-
-    if (kind === 'custom') {
-      // Shell scripts: exit 0 = success, non-zero = error.
-      if (exitCode === 0) {
-        broadcast({ type: 'agent:completed', agentId })
-        broadcast({ type: 'agent:ready-to-merge', agentId })
-      } else {
-        broadcast({ type: 'agent:died', agentId })
-      }
-    } else if (hasTask) {
-      // Non-interactive: `claude -p "task"` exits 0 on success, non-zero on crash/failure.
-      if (exitCode === 0) {
-        broadcast({ type: 'agent:completed', agentId })
-        broadcast({ type: 'agent:ready-to-merge', agentId })
-      } else {
-        broadcast({ type: 'agent:died', agentId })
-      }
-    } else {
-      // Interactive TUI (no task): user manually closed the session.
-      // Always offer Review & Merge — the worktree has their changes.
-      broadcast({ type: 'agent:completed', agentId })
-      broadcast({ type: 'agent:ready-to-merge', agentId })
+    for (const event of strategy.exitEvents(exitCode, agentId)) {
+      broadcast(event)
     }
   })
 }
 
-/**
- * Wait up to 5s for a prompt character to appear.
- * Spec §3: "waits for prompt to appear" before injecting task.
- */
 function waitForPrompt(instance: pty.IPty): Promise<void> {
   return new Promise((resolve) => {
     const timeout    = setTimeout(resolve, 5000)

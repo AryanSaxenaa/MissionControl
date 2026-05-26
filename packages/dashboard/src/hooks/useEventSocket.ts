@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useMissionControlStore } from '../store/useStore'
+import type { AgentRecord } from '@missioncontrol/types'
 
 export function useEventSocket(serverUrl: string) {
   const store = useMissionControlStore()
@@ -56,7 +57,7 @@ export function useEventSocket(serverUrl: string) {
               store.upsertAgent(msg.agent)
               break
             case 'agent:heartbeat':
-              store.updateAgentStatus(msg.agentId, msg.status as import('@missioncontrol/types').AgentRecord['status'], msg.task)
+              store.updateAgentStatus(msg.agentId, msg.status as AgentRecord['status'], msg.task)
               break
             case 'agent:died':
               store.markAgentDead(msg.agentId)
@@ -99,7 +100,7 @@ export function useEventSocket(serverUrl: string) {
               store.applyConflictResolved(msg.conflictId, msg.resolution)
               break
             case 'decision:recorded':
-              store.addDecision({ sourceId: msg.sourceId, agentId: msg.agentId, summary: msg.summary, createdAt: Date.now() })
+              store.addDecision({ sourceId: msg.sourceId, agentId: msg.agentId, target: msg.target, summary: msg.summary, createdAt: Date.now() })
               break
             case 'failure:recorded':
               store.addFailure({ sourceId: msg.sourceId, agentId: msg.agentId, target: msg.target, errorType: msg.errorType, createdAt: Date.now() })

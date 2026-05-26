@@ -5,6 +5,21 @@ export type { AgentRecord, IntentRecord }
 export const agents = new Map<string, AgentRecord>()
 export const activeIntents = new Map<string, IntentRecord>()
 
+// sessionId → agentId (populated by session-start hook)
+export const sessionToAgent = new Map<string, string>()
+// sessionId → intentId
+export const sessionIntents = new Map<string, string>()
+
+export function clearSessionsForAgent(agentId: string): void {
+  for (const [sessionId, aId] of sessionToAgent.entries()) {
+    if (aId === agentId) {
+      const intentId = sessionIntents.get(sessionId)
+      if (intentId) sessionIntents.delete(sessionId)
+      sessionToAgent.delete(sessionId)
+    }
+  }
+}
+
 export function getIntentsByAgent(agentId: string): IntentRecord[] {
   return [...activeIntents.values()].filter(i => i.agentId === agentId)
 }
@@ -17,22 +32,25 @@ export function getIntentsForTarget(target: string): IntentRecord[] {
   )
 }
 
+// Collapse backslashes (Windows) to forward slashes, lowercases drive letters,
+// and strips trailing slashes so cross-shell paths compare equally.
+export function normalizePathSeparators(p: string): string {
+  let s = p.replace(/\\/g, '/').replace(/\/+$/, '')
+  return s.replace(/^([a-zA-Z]):\//, (_m, d) => d.toLowerCase() + ':/')
+}
+
 // Strips the per-agent worktree prefix so two agents writing to the same logical
 // file collide even though their absolute paths differ. Two agents working on the
 // same project repo will see paths like:
 //   <project>/.trees/agent-AAA/README.md
 //   <project>/.trees/agent-BBB/README.md
 // Both must normalize to <project>/README.md for conflict detection to fire.
-//
-// Also collapses backslashes (Windows) to forward slashes and lowercases drive
-// letters so cross-shell paths compare equally.
+export function stripWorktreePrefix(p: string): string {
+  return p.replace(/(^|.*?\/)\.trees\/[^/]+\/(.*)$/, '$1$2')
+}
+
 export function normalizeTarget(p: string): string {
-  let s = p.replace(/\\/g, '/').replace(/\/+$/, '')
-  // Lowercase Windows drive letter: C:/... -> c:/...
-  s = s.replace(/^([a-zA-Z]):\//, (_m, d) => d.toLowerCase() + ':/')
-  // Strip per-agent worktree segment: .../.trees/<agentId>/<rest> -> .../<rest>
-  s = s.replace(/(^|.*?\/)\.trees\/[^/]+\/(.*)$/, '$1$2')
-  return s
+  return stripWorktreePrefix(normalizePathSeparators(p))
 }
 
 export function clearIntentsForAgent(agentId: string): void {
@@ -41,26 +59,32 @@ export function clearIntentsForAgent(agentId: string): void {
   }
 }
 
-export function pathsOverlap(a: string, b: string): boolean {
-  const na = normalizeTarget(a)
-  const nb = normalizeTarget(b)
+function pathsOverlapExactOrPrefix(a: string, b: string): boolean {
+  if (a === b) return true
+  return a.startsWith(b + '/') || b.startsWith(a + '/')
+}
 
-  if (na === nb) return true
-  if (na.startsWith(nb + '/') || nb.startsWith(na + '/')) return true
+function pathsOverlapTailMatch(a: string, b: string): boolean {
+  const tailA = a.split('/').slice(-2).join('/')
+  const tailB = b.split('/').slice(-2).join('/')
+  return Boolean(tailA && tailA === tailB)
+}
 
-  // Same basename in two different worktrees is the common multi-agent case:
-  // even if the prefix differs (e.g. one path was already absolute, the other
-  // relative), matching the trailing path segments catches it.
-  const tailA = na.split('/').slice(-2).join('/')
-  const tailB = nb.split('/').slice(-2).join('/')
-  if (tailA && tailA === tailB) return true
-
+function pathsOverlapGlob(a: string, b: string): boolean {
   const escapeRegex = (s: string) => s.replace(/[.+^${}()|[\]\\]/g, '\\$&')
   const globToRegex = (g: string) =>
     new RegExp('^' + escapeRegex(g).replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '(/.*)?$')
 
   if (a.includes('*')) return globToRegex(a).test(b)
   if (b.includes('*')) return globToRegex(b).test(a)
-
   return false
+}
+
+export function pathsOverlap(a: string, b: string): boolean {
+  const na = normalizeTarget(a)
+  const nb = normalizeTarget(b)
+
+  return pathsOverlapExactOrPrefix(na, nb)
+    || pathsOverlapTailMatch(na, nb)
+    || pathsOverlapGlob(na, nb)
 }

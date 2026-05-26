@@ -4,7 +4,8 @@ import { broadcast } from '../ws-events.js'
 import { incrementCounter } from '../services/agent-health.js'
 import { IngestContextSchema, QueryContextSchema } from '../validators.js'
 import { getGraphData } from '../services/graph-traversal.js'
-import { agents, activeIntents } from '../state.js'
+import { recentDecisions } from './decisions.js'
+import { recentFailures } from './failures.js'
 
 export default async function contextRoutes(fastify: FastifyInstance) {
   fastify.post('/', async (req, reply) => {
@@ -21,15 +22,8 @@ export default async function contextRoutes(fastify: FastifyInstance) {
 
     broadcast({ type: 'context:ingested', agentId: body.agentId })
 
-    // Push updated graph snapshot to all clients (avoids N client fetches)
-    getGraphData().then(({ superNodes }) => {
-      broadcast({
-        type: 'graph:snapshot',
-        superNodes,
-        sources: [],
-        activeAgents: [...agents.values()],
-        activeIntents: [...activeIntents.values()],
-      } as any)
+    getGraphData(recentDecisions, recentFailures).then(data => {
+      broadcast({ type: 'graph:snapshot', ...data } as any)
     }).catch(() => {})
 
     return { sourceId, relatedContext: '' }

@@ -9,16 +9,15 @@ import { agents, activeIntents } from './state.js'
 import { getGraphData } from './services/graph-traversal.js'
 import { startHealthMonitor } from './services/health-monitor.js'
 import { listSources } from './hydra.js'
+import { createEnvStatus, printBootBanner, pingHydraDB } from './services/env-status.js'
 import agentRoutes from './routes/agents.js'
 import contextRoutes from './routes/context.js'
 import intentRoutes from './routes/intents.js'
-import decisionRoutes from './routes/decisions.js'
-import failureRoutes from './routes/failures.js'
+import decisionRoutes, { recentDecisions } from './routes/decisions.js'
+import failureRoutes, { recentFailures } from './routes/failures.js'
 import conflictRoutes from './routes/conflicts.js'
 import { hooksRoutes } from './routes/hooks.js'
 import { mergeRoutes } from './routes/merge.js'
-import { recentDecisions } from './routes/decisions.js'
-import { recentFailures } from './routes/failures.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const envPath = resolve(__dirname, '../../../.env')
@@ -34,37 +33,8 @@ if (existsSync(envPath)) {
   }
 }
 
-// Surfaces which integrations are configured. Returned by /api/env-status and
-// logged on boot so missing credentials don't fail silently on every hook call.
-type EnvIntegrationStatus = {
-  hydraConfigured: boolean
-  hydraReachable: boolean | null   // null until ping completes
-  hydraError: string | null
-  openrouterConfigured: boolean
-  envFileFound: boolean
-}
-
-const envStatus: EnvIntegrationStatus = {
-  hydraConfigured: Boolean(process.env.HYDRA_API_KEY && process.env.HYDRA_TENANT_ID),
-  hydraReachable: null,
-  hydraError: null,
-  openrouterConfigured: Boolean(process.env.OPENROUTER_API_KEY),
-  envFileFound: existsSync(envPath),
-}
-
-// Boot banner — make missing credentials impossible to miss.
-console.log(`[MissionControl] env file: ${envStatus.envFileFound ? envPath : 'NOT FOUND'}`)
-if (!envStatus.hydraConfigured) {
-  console.error(
-    `[MissionControl] FATAL CONFIG: HYDRA_API_KEY and HYDRA_TENANT_ID are required.\n` +
-    `  - HYDRA_API_KEY     : ${process.env.HYDRA_API_KEY ? 'set' : 'MISSING'}\n` +
-    `  - HYDRA_TENANT_ID   : ${process.env.HYDRA_TENANT_ID ? 'set' : 'MISSING'}\n` +
-    `  Add these to ${envPath} before spawning agents. Memory/decisions/conflicts will not work without them.`
-  )
-} else {
-  console.log(`[MissionControl] HydraDB configured (tenant: ${process.env.HYDRA_TENANT_ID})`)
-}
-console.log(`[MissionControl] OpenRouter (semantic conflict step): ${envStatus.openrouterConfigured ? 'enabled' : 'disabled (no OPENROUTER_API_KEY)'}`)
+const envStatus = createEnvStatus(envPath)
+printBootBanner(envStatus, envPath)
 
 const PORT = parseInt(process.env.MC_SERVER_PORT || '3000')
 
@@ -81,33 +51,7 @@ fastify.register(conflictRoutes, { prefix: '/api/conflicts' })
 fastify.register(hooksRoutes)
 fastify.register(mergeRoutes)
 
-fastify.get('/api/graph', async (req, reply) => {
-  const { superNodes } = await getGraphData()
-
-  // ingestMemory() creates HydraDB memories, not document sources — listData()
-  // always returns empty. Synthesize sources from the in-memory ring buffers so
-  // the Context Graph sidebar and memory breakdown have data immediately.
-  const decisionSources = recentDecisions.map(d => ({
-    source_id: d.sourceId || `decision-${d.createdAt}`,
-    sub_tenant_id: 'decisions',
-    created_at: new Date(d.createdAt).toISOString(),
-    metadata: { agent_id: d.agentId, summary: d.summary },
-  }))
-  const failureSources = recentFailures.map(f => ({
-    source_id: f.sourceId || `failure-${f.createdAt}`,
-    sub_tenant_id: 'failures',
-    created_at: new Date(f.createdAt).toISOString(),
-    metadata: { agent_id: f.agentId, target: f.target, error_type: f.errorType },
-  }))
-  const sources = [...decisionSources, ...failureSources].slice(0, 200)
-
-  return {
-    superNodes,
-    sources,
-    activeAgents: [...agents.values()],
-    activeIntents: [...activeIntents.values()],
-  }
-})
+fastify.get('/api/graph', async () => getGraphData(recentDecisions, recentFailures))
 
 fastify.get('/api/status', async () => ({
   agents: agents.size,
@@ -116,17 +60,13 @@ fastify.get('/api/status', async () => ({
   env: envStatus,
 }))
 
-// Lets the dashboard show a clear banner when integrations are misconfigured,
-// instead of users wondering why Decision Log / Context Graph stay empty.
 fastify.get('/api/env-status', async () => envStatus)
 
-// Returns the server's working directory so the dashboard can prefill the projectPath field.
 fastify.get('/api/server-info', async () => ({
   cwd: process.cwd(),
   platform: process.platform,
 }))
 
-// HydraDB memory stats — surfaced in the dashboard status bar
 fastify.get('/api/memory/stats', async (req, reply) => {
   try {
     const sources = await listSources()
@@ -147,7 +87,6 @@ try {
   process.exit(1)
 }
 
-// Route WebSocket upgrades manually (required for two WSS on same HTTP server)
 fastify.server.on('upgrade', (request, socket, head) => {
   const { pathname } = new URL(request.url!, `http://localhost`)
   if (pathname === '/ws') {
@@ -161,23 +100,4 @@ fastify.server.on('upgrade', (request, socket, head) => {
 
 console.log(`[MissionControl] Server on :${PORT}`)
 startHealthMonitor()
-
-// Real HydraDB connectivity ping. Fast (5s timeout via withTimeout in hydra.ts)
-// — if this fails, you'll see exactly why instead of every ingest failing later.
-if (envStatus.hydraConfigured) {
-  listSources()
-    .then(() => {
-      envStatus.hydraReachable = true
-      console.log(`[MissionControl] HydraDB reachable — connectivity verified`)
-    })
-    .catch((e: any) => {
-      envStatus.hydraReachable = false
-      envStatus.hydraError = e?.message || String(e)
-      console.error(`[MissionControl] HydraDB UNREACHABLE: ${envStatus.hydraError}`)
-      console.error(`  All ingestContext/ingestDecision/ingestFailure calls will fail.`)
-      console.error(`  Verify HYDRA_API_KEY is valid and your network can reach HydraDB.`)
-    })
-} else {
-  envStatus.hydraReachable = false
-  envStatus.hydraError = 'HYDRA_API_KEY or HYDRA_TENANT_ID not set'
-}
+pingHydraDB(envStatus)

@@ -19,7 +19,7 @@ export type WSEvent =
   | { type: 'conflict:detected'; conflict: ConflictResult }
   | { type: 'conflict:resolved'; conflictId: string; resolution: string }
   | { type: 'context:ingested'; agentId: string }
-  | { type: 'decision:recorded'; sourceId: string; agentId: string; summary: string }
+  | { type: 'decision:recorded'; sourceId: string; agentId: string; target: string; summary: string }
   | { type: 'failure:recorded'; sourceId: string; agentId: string; target: string; errorType: string }
   | { type: 'graph:snapshot'; superNodes: any[] }
 

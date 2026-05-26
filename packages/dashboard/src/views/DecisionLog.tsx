@@ -3,21 +3,8 @@ import { useMissionControlStore } from '../store/useStore'
 
 interface WhyResult {
   answer: string
-  chunks: { chunk_content?: string; relevancy_score?: number }[]
-  recentDecisions: { sourceId: string; agentId: string; summary: string; createdAt: number }[]
-}
-
-// Extract the logical file path from an auto-generated summary like:
-// "Agent agent-bc36... modified C:\..\.trees\agent-bc36...\src\index.ts: Edit"
-function extractPathFromSummary(summary: string): string {
-  const match = summary.match(/modified (.+?)(?::\s*\w+\s*)?$/)
-  if (match) {
-    const raw = match[1].trim()
-    // Strip worktree prefix: anything up to and including \.trees\<agentId>\
-    const stripped = raw.replace(/.*[/\\]\.trees[/\\][^/\\]+[/\\]/i, '')
-    return stripped.replace(/\\/g, '/') || raw
-  }
-  return summary
+  chunks: { chunk_content?: string; relevancy_score?: number | null }[]
+  recentDecisions: { sourceId: string; agentId: string; target: string; summary: string; createdAt: number }[]
 }
 
 export default function DecisionLog() {
@@ -109,7 +96,7 @@ export default function DecisionLog() {
             <div
               key={d.sourceId}
               className="border border-[#171717] bg-[#020202] p-4 hover:border-[#2a2a2a] transition-colors cursor-pointer"
-              onClick={() => setWhyTarget(extractPathFromSummary(d.summary))}
+              onClick={() => setWhyTarget(d.target || d.summary.split(' ').slice(0, 5).join(' '))}
               title="Click to query Why? for this decision"
             >
               <div className="flex items-center gap-3 mb-2">

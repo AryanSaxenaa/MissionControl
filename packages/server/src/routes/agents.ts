@@ -10,8 +10,7 @@ import { createWorktree, deleteWorktree } from '../services/worktree-manager.js'
 import { assignPort, releasePort, injectPortEnv } from '../services/port-registry.js'
 import { installHooks } from '../services/hook-installer.js'
 import { spawnAgent, killAgent, resizeAgent } from '../services/pty-spawner.js'
-import { clearIntentsForAgent } from '../state.js'
-import { clearSessionsForAgent } from './hooks.js'
+import { destroyAgent } from '../services/agent-cleanup.js'
 import { simpleGit } from 'simple-git'
 import fs from 'fs/promises'
 import path from 'path'
@@ -211,10 +210,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   fastify.post('/:id/kill', async (req, reply) => {
     const { id } = req.params as { id: string }
     killAgent(id)
-    agents.delete(id)
-    clearIntentsForAgent(id)
-    clearSessionsForAgent(id)
-    broadcast({ type: 'agent:removed', agentId: id })
+    destroyAgent(id)
     return reply.send({ ok: true })
   })
 

@@ -51,6 +51,7 @@ export interface GraphData {
 export interface DecisionItem {
   sourceId: string
   agentId: string
+  target: string
   summary: string
   createdAt: number
 }
