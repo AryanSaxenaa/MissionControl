@@ -1,27 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { IncomingMessage } from 'http'
 import type { Duplex } from 'stream'
-import type { AgentRecord, IntentRecord, ConflictResult } from '@missioncontrol/types'
-
-export type WSEvent =
-  | { type: 'agent:spawned'; agent: AgentRecord }
-  | { type: 'agent:registered'; agent: AgentRecord }
-  | { type: 'agent:heartbeat'; agentId: string; status: string; task?: string }
-  | { type: 'agent:died'; agentId: string }
-  | { type: 'agent:spawn-failed'; agentId: string; error: string }
-  | { type: 'agent:removed'; agentId: string }
-  | { type: 'agent:completed'; agentId: string }
-  | { type: 'agent:ready-to-merge'; agentId: string }
-  | { type: 'permission:requested'; agentId: string; requestId: string; tool: string; target: string; reason: string }
-  | { type: 'permission:resolved'; agentId: string; requestId: string; decision: 'allow' | 'deny' }
-  | { type: 'intent:declared'; intent: IntentRecord }
-  | { type: 'intent:updated'; intentId: string; status: IntentRecord['status'] }
-  | { type: 'conflict:detected'; conflict: ConflictResult }
-  | { type: 'conflict:resolved'; conflictId: string; resolution: string }
-  | { type: 'context:ingested'; agentId: string }
-  | { type: 'decision:recorded'; sourceId: string; agentId: string; target: string; summary: string }
-  | { type: 'failure:recorded'; sourceId: string; agentId: string; target: string; errorType: string }
-  | { type: 'graph:snapshot'; superNodes: any[] }
+import type { AgentRecord, IntentRecord, ConflictResult, WSEvent } from '@missioncontrol/types'
 
 const clients = new Set<WebSocket>()
 const eventsWss = new WebSocketServer({ noServer: true })

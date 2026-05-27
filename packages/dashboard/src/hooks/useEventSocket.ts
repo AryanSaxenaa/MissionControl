@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useMissionControlStore } from '../store/useStore'
-import type { AgentRecord } from '@missioncontrol/types'
+import type { TimelineEventType, WSEvent } from '@missioncontrol/types'
 
 export function useEventSocket(serverUrl: string) {
   const store = useMissionControlStore()
@@ -41,13 +41,13 @@ export function useEventSocket(serverUrl: string) {
 
       ws.onmessage = (event) => {
         try {
-          const msg = JSON.parse(event.data)
+          const msg = JSON.parse(event.data) as WSEvent
 
           if (['agent:spawned','agent:registered','agent:died','agent:completed','agent:heartbeat','intent:declared','decision:recorded','failure:recorded'].includes(msg.type)) {
             store.pushActivityEvent({
               timestamp: Date.now(),
-              type: msg.type as any,
-              agentId: msg.agentId ?? msg.agent?.id ?? '',
+              type: msg.type as TimelineEventType,
+              agentId: ('agentId' in msg ? msg.agentId : ('agent' in msg ? msg.agent.id : '')) ?? '',
             })
           }
 

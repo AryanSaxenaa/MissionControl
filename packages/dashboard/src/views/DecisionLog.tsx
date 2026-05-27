@@ -1,10 +1,6 @@
 import { useState } from 'react'
 import { useMissionControlStore } from '../store/useStore'
-
-interface WhyResult {
-  answer: string
-  chunks: { chunk_content?: string; relevancy_score?: number | null }[]
-}
+import type { WhyResult } from '@missioncontrol/types'
 
 export default function DecisionLog() {
   const store = useMissionControlStore()

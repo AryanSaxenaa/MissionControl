@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
-
-type AgentKind = 'claude-code' | 'codex' | 'opencode' | 'custom'
+import type { AgentKind } from '@missioncontrol/types'
 
 const KIND_LABELS: Record<AgentKind, string> = {
   'claude-code': 'Claude Code',

@@ -1,13 +1,5 @@
 import { create } from 'zustand'
-import type { AgentRecord, IntentRecord, ConflictResult, GraphData, DecisionItem, FailureItem, TimelineEvent } from '@missioncontrol/types'
-
-export interface PermissionRequest {
-  requestId: string
-  agentId: string
-  tool: string
-  target: string
-  reason: string
-}
+import type { AgentRecord, IntentRecord, ConflictResult, GraphData, DecisionItem, FailureItem, TimelineEvent, PermissionRequest } from '@missioncontrol/types'
 
 interface MissionControlStore {
   // Connection

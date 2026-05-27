@@ -1,10 +1,5 @@
 import { recallDecisionsForTarget, whyQuery } from '../hydra.js'
-import type { DecisionItem } from '@missioncontrol/types'
-
-export interface WhyResult {
-  answer: string
-  chunks: any[]
-}
+import type { WhyResult } from '@missioncontrol/types'
 
 /**
  * 1. Semantic search via recallDecisionsForTarget (most reliable for auto-ingested format)
