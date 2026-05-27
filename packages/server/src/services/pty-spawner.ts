@@ -1,6 +1,7 @@
 import * as pty from 'node-pty'
 import type { AgentKind } from '@missioncontrol/types'
-import { broadcast, type WSEvent } from '../ws-events.js'
+import { broadcast } from '../ws-events.js'
+import type { WSEvent } from '@missioncontrol/types'
 import { appendBuffer, clearBuffer } from '../pty-buffer.js'
 
 export const ptyInstances = new Map<string, pty.IPty>()

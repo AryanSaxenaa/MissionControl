@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useMissionControlStore } from '../store/useStore'
-import type { TimelineEventType, WSEvent } from '@missioncontrol/types'
+import type { TimelineEventType, WSEvent, AgentRecord } from '@missioncontrol/types'
 
 export function useEventSocket(serverUrl: string) {
   const store = useMissionControlStore()

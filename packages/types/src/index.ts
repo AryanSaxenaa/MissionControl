@@ -106,7 +106,7 @@ export type WSEvent =
   | { type: 'context:ingested'; agentId: string }
   | { type: 'decision:recorded'; sourceId: string; agentId: string; target: string; summary: string }
   | { type: 'failure:recorded'; sourceId: string; agentId: string; target: string; errorType: string }
-  | { type: 'graph:snapshot'; superNodes: any[] }
+  | ({ type: 'graph:snapshot' } & GraphData)
 
 export interface PermissionRequest {
   requestId: string

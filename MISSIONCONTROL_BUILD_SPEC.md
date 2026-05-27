@@ -72,7 +72,7 @@ missioncontrol/
 │   │   │   ├── ws-events.ts                # Structured events WebSocket (/ws)
 │   │   │   ├── ws-pty.ts                   # PTY byte-stream WebSocket (/pty/:agentId)
 │   │   │   ├── routes/
-│   │   │   │   ├── agents.ts               # Register, heartbeat, list
+│   │   │   │   ├── agents.ts               # Spawn, heartbeat, list
 │   │   │   │   ├── context.ts
 │   │   │   │   ├── intents.ts
 │   │   │   │   ├── conflicts.ts
@@ -141,7 +141,6 @@ missioncontrol/
 │       └── package.json
 │
 ├── .env.example
-├── missioncontrol.config.ts
 ├── pnpm-workspace.yaml
 └── package.json
 ```
