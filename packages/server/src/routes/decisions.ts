@@ -32,7 +32,7 @@ export default async function decisionRoutes(fastify: FastifyInstance) {
 
   fastify.get('/why', async (req, reply) => {
     const query = WhyQuerySchema.parse(req.query)
-    const result = await explainWhy(query.target, recentDecisions)
+    const result = await explainWhy(query.target)
     return result
   })
 }

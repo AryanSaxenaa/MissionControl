@@ -2,7 +2,7 @@
 import { Command } from 'commander'
 import { initCmd } from './commands/init.js'
 import { startCmd } from './commands/start.js'
-import { agentCmd } from './commands/agent.js'
+
 import { contextCmd } from './commands/context.js'
 import { whyCmd } from './commands/why.js'
 import { failuresCmd } from './commands/failures.js'
@@ -18,7 +18,7 @@ program
 
 program.addCommand(initCmd)
 program.addCommand(startCmd)
-program.addCommand(agentCmd)
+
 program.addCommand(contextCmd)
 program.addCommand(whyCmd)
 program.addCommand(failuresCmd)

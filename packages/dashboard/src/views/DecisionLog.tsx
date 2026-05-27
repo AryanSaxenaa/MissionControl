@@ -4,7 +4,6 @@ import { useMissionControlStore } from '../store/useStore'
 interface WhyResult {
   answer: string
   chunks: { chunk_content?: string; relevancy_score?: number | null }[]
-  recentDecisions: { sourceId: string; agentId: string; target: string; summary: string; createdAt: number }[]
 }
 
 export default function DecisionLog() {
@@ -21,7 +20,7 @@ export default function DecisionLog() {
       const data = await r.json()
       setWhyResult(data)
     } catch {
-      setWhyResult({ answer: 'Failed to query memory.', chunks: [], recentDecisions: [] })
+      setWhyResult({ answer: 'Failed to query memory.', chunks: [] })
     } finally {
       setWhyLoading(false)
     }
@@ -69,18 +68,7 @@ export default function DecisionLog() {
               </div>
             )}
 
-            {/* In-memory fallback when HydraDB hasn't indexed yet */}
-            {whyResult.chunks.length === 0 && whyResult.recentDecisions.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-[10px] text-[#555] uppercase tracking-widest">This session</div>
-                {whyResult.recentDecisions.map(d => (
-                  <div key={d.sourceId} className="bg-[#0a0a0a] border border-[#1a1a1a] p-3 text-xs text-[#999] font-mono leading-relaxed">
-                    <span className="text-[#555]">{d.agentId.slice(0, 14)} · </span>
-                    {d.summary}
-                  </div>
-                ))}
-              </div>
-            )}
+
           </div>
         )}
       </div>

@@ -1,0 +1,81 @@
+AgentPaneProps is defined once in:
+  - packages\dashboard\src\components\AgentPane.tsx
+
+HealthRingProps is defined once in:
+  - packages\dashboard\src\components\HealthRing.tsx
+
+MergeReviewProps is defined once in:
+  - packages\dashboard\src\components\MergeReview.tsx
+
+DiffData is defined once in:
+  - packages\dashboard\src\components\MergeReview.tsx
+
+AgentKind is defined in:
+  - packages\dashboard\src\components\NewAgentDialog.tsx
+  - packages\types\src\index.ts
+
+NewAgentDialogProps is defined once in:
+  - packages\dashboard\src\components\NewAgentDialog.tsx
+
+PermissionModalProps is defined once in:
+  - packages\dashboard\src\components\PermissionModal.tsx
+
+PermissionRequest is defined once in:
+  - packages\dashboard\src\store\useStore.ts
+
+MissionControlStore is defined once in:
+  - packages\dashboard\src\store\useStore.ts
+
+MemoryEntry is defined once in:
+  - packages\dashboard\src\views\ContextGraph.tsx
+
+WhyResult is defined in:
+  - packages\dashboard\src\views\DecisionLog.tsx
+  - packages\server\src\services\decision-service.ts
+
+HookConfig is defined once in:
+  - packages\sdk\src\hooks\hooks.ts
+
+ConflictResult is defined in:
+  - packages\sdk\src\index.ts
+  - packages\types\src\index.ts
+
+MissionControlConfig is defined once in:
+  - packages\sdk\src\index.ts
+
+AgentCounters is defined once in:
+  - packages\server\src\services\agent-health.ts
+
+EnvIntegrationStatus is defined once in:
+  - packages\server\src\services\env-status.ts
+
+SpawnStrategy is defined once in:
+  - packages\server\src\services\pty-spawner.ts
+
+WSEvent is defined once in:
+  - packages\server\src\ws-events.ts
+
+AgentRecord is defined once in:
+  - packages\types\src\index.ts
+
+IntentRecord is defined once in:
+  - packages\types\src\index.ts
+
+GraphData is defined once in:
+  - packages\types\src\index.ts
+
+DecisionItem is defined once in:
+  - packages\types\src\index.ts
+
+FailureItem is defined once in:
+  - packages\types\src\index.ts
+
+TimelineEventType is defined once in:
+  - packages\types\src\index.ts
+
+TimelineEvent is defined once in:
+  - packages\types\src\index.ts
+
+HookPayload is defined once in:
+  - packages\types\src\index.ts
+

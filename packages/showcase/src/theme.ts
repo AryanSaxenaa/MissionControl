@@ -1,0 +1,17 @@
+export const T = {
+  bg:        '#020202',
+  bgDeep:    '#000000',
+  border:    '#171717',
+  border2:   '#2a2a2a',
+  orange:    '#f97316',
+  orangeDim: '#f9731640',
+  text:      '#d4d4d4',
+  muted:     '#888888',
+  dim:       '#555555',
+  dimmer:    '#333333',
+  green:     '#10b981',
+  red:       '#ef4444',
+  blue:      '#3b82f6',
+  purple:    '#a855f7',
+  font:      '"JetBrains Mono", "Fira Mono", "Consolas", monospace',
+} as const

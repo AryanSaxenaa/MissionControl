@@ -1,0 +1,25 @@
+{
+  "name": "@missioncontrol/showcase",
+  "version": "1.0.0",
+  "description": "MissionControl product showcase — Remotion video",
+  "private": true,
+  "scripts": {
+    "start": "remotion studio",
+    "build": "remotion render",
+    "render": "remotion render MissionControlShowcase out/showcase.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.466",
+    "remotion": "^4.0.466",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.4.5"
+  },
+  "remotion": {
+    "entryPoint": "./src/index.ts"
+  }
+}

@@ -10,7 +10,7 @@ const execAsync = promisify(exec)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const MONOREPO_ROOT = path.resolve(__dirname, '../../../../')
 
-export function buildClaudeHookConfig(serverUrl: string, agentId: string): object {
+function buildClaudeHookConfig(serverUrl: string, agentId: string): object {
   const q = `?agentId=${agentId}`
   return {
     hooks: {
@@ -34,7 +34,7 @@ export function buildClaudeHookConfig(serverUrl: string, agentId: string): objec
   }
 }
 
-export function buildCodexHookConfig(serverUrl: string, agentId: string): object {
+function buildCodexHookConfig(serverUrl: string, agentId: string): object {
   const q = `?agentId=${agentId}`
   return {
     hooks: {
@@ -46,7 +46,7 @@ export function buildCodexHookConfig(serverUrl: string, agentId: string): object
   }
 }
 
-export function buildOpenCodeConfig(serverUrl: string, agentId: string): object {
+function buildOpenCodeConfig(serverUrl: string, agentId: string): object {
   // opencode.json schema: https://opencode.ai/config.json
   // The correct key is "plugin" (singular array), NOT "plugins".
   // MC_SERVER_URL and MC_AGENT_ID are injected as PTY env vars by pty-spawner.ts,

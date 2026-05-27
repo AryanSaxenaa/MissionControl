@@ -86,18 +86,7 @@ async function injectBrainContext(
   await fs.writeFile(path.join(worktreePath, '.mc_context'), content)
 }
 
-// Used only by the legacy v0.1.0 /register compat path (SDK-based agents).
-async function inheritParentContext(
-  agentId: string,
-  parentAgentId: string,
-  writePath?: string
-): Promise<string> {
-  const recalled = await recallParentContext(parentAgentId)
-  if (!recalled.chunks?.length) return ''
-  const text = recalled.chunks.slice(0, 20).map((c: any) => c.chunk_content).join('\n---\n')
-  if (writePath) await fs.writeFile(writePath, text)
-  return text
-}
+
 
 export default async function agentRoutes(fastify: FastifyInstance) {
 
@@ -227,42 +216,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return [...agents.values()]
   })
 
-  // v0.1.0 compat: register (SDK-based agents call this)
-  fastify.post('/register', async (req, reply) => {
-    const body = RegisterAgentSchema.parse(req.body)
 
-    const agentId = `agent-${uuidv4()}`
-    let inheritedContext = ''
-
-    const newAgent: AgentRecord = {
-      id: agentId,
-      name: body.name,
-      kind: body.kind,
-      pid: body.pid,
-      status: 'active',
-      spawnedAt: Date.now(),
-      lastHeartbeat: Date.now(),
-      contextRichness: 0,
-      parentAgentId: body.parentAgentId,
-      assignedPort: 0,
-      worktreePath: '',  // SDK-registered agents have no worktree
-    }
-
-    agents.set(agentId, newAgent)
-
-    if (body.parentAgentId) {
-      try {
-        inheritedContext = await inheritParentContext(agentId, body.parentAgentId)
-        if (inheritedContext) {
-          incrementCounter(agentId, 'inherited', inheritedContext.split('\n---\n').length)
-          ingestAgentSummary(agentId, `Inherited context from parent agent ${body.parentAgentId}:\n${inheritedContext}`).catch(() => {})
-        }
-      } catch { /* non-fatal */ }
-    }
-
-    broadcast({ type: 'agent:registered', agent: agents.get(agentId)! })
-    return { agentId, inheritedContext }
-  })
 
   fastify.post('/:id/heartbeat', async (req, reply) => {
     const { id } = req.params as Record<string, string>

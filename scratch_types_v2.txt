@@ -1,0 +1,12 @@
+AgentKind is defined in:
+  - packages\dashboard\src\components\NewAgentDialog.tsx
+  - packages\types\src\index.ts
+
+WhyResult is defined in:
+  - packages\dashboard\src\views\DecisionLog.tsx
+  - packages\server\src\services\decision-service.ts
+
+ConflictResult is defined in:
+  - packages\sdk\src\index.ts
+  - packages\types\src\index.ts
+
