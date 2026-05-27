@@ -95,8 +95,18 @@ export async function installHooks(
     const relativePluginPath = path.relative(worktreePath, pluginPkgPath)
     try {
       await execAsync(`npm install "${relativePluginPath}"`, { cwd: worktreePath })
-    } catch (e: any) {
-      console.error(`[hooks] opencode plugin install failed for ${agentId}:`, e?.message || e)
+    } catch (firstErr: any) {
+      console.warn(`[hooks] npm install failed for ${agentId}, trying pnpm:`, firstErr?.message || firstErr)
+      try {
+        await execAsync(`pnpm add "${relativePluginPath}"`, { cwd: worktreePath })
+      } catch (pnpmErr: any) {
+        console.warn(`[hooks] pnpm install also failed for ${agentId}, trying yarn:`, pnpmErr?.message || pnpmErr)
+        try {
+          await execAsync(`yarn add "file:${relativePluginPath}"`, { cwd: worktreePath })
+        } catch (yarnErr: any) {
+          console.error(`[hooks] all package managers failed for ${agentId}. opencode plugin will not be available. yarn error:`, yarnErr?.message || yarnErr)
+        }
+      }
     }
   } else if (kind === 'custom') {
     // Custom kind = generic shell. We don't know which CLI the user will run.

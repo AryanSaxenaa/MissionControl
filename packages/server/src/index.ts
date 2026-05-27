@@ -23,12 +23,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const envPath = resolve(__dirname, '../../../.env')
 if (existsSync(envPath)) {
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-    const trimmed = line.trim()
+    let trimmed = line.trim()
     if (!trimmed || trimmed.startsWith('#')) continue
+    if (trimmed.startsWith('export ')) {
+      trimmed = trimmed.slice(7).trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+    }
     const eq = trimmed.indexOf('=')
     if (eq === -1) continue
     const key = trimmed.slice(0, eq).trim()
-    const val = trimmed.slice(eq + 1).trim()
+    let val = trimmed.slice(eq + 1).trim()
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1)
+    }
     if (!process.env[key]) process.env[key] = val
   }
 }

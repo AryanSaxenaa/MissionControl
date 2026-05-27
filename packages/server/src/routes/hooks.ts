@@ -163,20 +163,23 @@ export async function hooksRoutes(app: FastifyInstance) {
     const target = extractTarget(tool_input)
     const description = tool_input.description ?? `${tool_name} on ${target}`
 
+    broadcast({ type: 'context:ingested', agentId })
+
     ingestContext({
       agentId,
       content: `Modified ${target}: ${description}`,
       scope: target,
       tags: ['modification', tool_name.toLowerCase()],
       confidence: 0.9,
-    }).then(() => {
-      broadcast({ type: 'context:ingested', agentId })
     }).catch((e: any) => {
       console.error(`[hooks/post] ingestContext failed for ${agentId} → ${target}:`, e?.message || e)
     })
 
     if (tool_name !== 'Bash') {
       const summary = `Agent ${agentId} modified ${target}: ${description}`
+
+      broadcast({ type: 'decision:recorded', sourceId: '', agentId, target, summary })
+
       ingestDecision({
         agentId,
         summary,
@@ -201,6 +204,9 @@ export async function hooksRoutes(app: FastifyInstance) {
       const isFailure = /exit code [1-9]|error:|Error:|FAILED|failed|exception|Exception/i.test(responseText)
       if (isFailure) {
         const errorSnippet = responseText.slice(0, 400)
+
+        broadcast({ type: 'failure:recorded', sourceId: '', agentId, target, errorType: 'bash-error' })
+
         ingestFailure({
           agentId,
           task: description,

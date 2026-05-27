@@ -32,7 +32,6 @@ function withTimeout<T>(promise: Promise<T>, ms = HYDRA_TIMEOUT_MS): Promise<T> 
   })
   return Promise.race([promise, timed]).finally(() => {
     clearTimeout(timer!)
-    promise.catch(() => {})
   })
 }
 

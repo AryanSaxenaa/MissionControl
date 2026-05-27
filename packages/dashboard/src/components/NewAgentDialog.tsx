@@ -28,7 +28,9 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
       .then((info: { cwd: string }) => {
         setProjectPath(prev => prev || info.cwd)
       })
-      .catch(() => {})
+      .catch((err: any) => {
+        console.error('[mc-ui] failed to fetch server info:', err?.message || err)
+      })
   }, [])
 
   const spawn = async () => {

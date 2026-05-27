@@ -3,6 +3,7 @@ import type { AgentKind } from '@missioncontrol/types'
 import { broadcast } from '../ws-events.js'
 import type { WSEvent } from '@missioncontrol/types'
 import { appendBuffer, clearBuffer } from '../pty-buffer.js'
+import { agents } from '../state.js'
 
 export const ptyInstances = new Map<string, pty.IPty>()
 
@@ -115,6 +116,11 @@ export async function spawnAgent(
   }
 
   instance.onExit(({ exitCode }) => {
+    const agent = agents.get(agentId)
+    if (agent) {
+      const newStatus = exitCode === 0 ? 'completed' : 'failed'
+      agents.set(agentId, { ...agent, status: newStatus })
+    }
     ptyInstances.delete(agentId)
     clearBuffer(agentId)
     for (const event of strategy.exitEvents(exitCode, agentId)) {
@@ -124,8 +130,9 @@ export async function spawnAgent(
 }
 
 function waitForPrompt(instance: pty.IPty): Promise<void> {
+  const promptTimeoutMs = parseInt(process.env.MC_PROMPT_TIMEOUT_MS || '15000')
   return new Promise((resolve) => {
-    const timeout    = setTimeout(resolve, 5000)
+    const timeout    = setTimeout(resolve, promptTimeoutMs)
     const disposable = instance.onData((data: string) => {
       if (data.includes('$') || data.includes('>') || data.includes('%') || data.includes('❯')) {
         clearTimeout(timeout)

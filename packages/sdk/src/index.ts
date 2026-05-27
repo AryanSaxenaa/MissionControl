@@ -176,7 +176,9 @@ export class Agent {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'completed' }),
-    }).catch(() => {})
+    }).catch((err: any) => {
+      console.warn(`[mc-sdk] shutdown heartbeat failed:`, err?.message || err)
+    })
   }
 }
 

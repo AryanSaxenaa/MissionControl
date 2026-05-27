@@ -15,11 +15,19 @@ export { ConflictResult, pathsOverlap }
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const OPENROUTER_MODEL = 'openrouter/owl-alpha'
 
+class OpenRouterError extends Error {
+  constructor(message: string, public cause?: string) {
+    super(`[OpenRouter] ${message}`)
+    this.name = 'OpenRouterError'
+  }
+}
+
 async function openRouterChat(prompt: string, maxTokens = 150): Promise<string> {
   const key = process.env.OPENROUTER_API_KEY
-  if (!key) return ''
+  if (!key) throw new OpenRouterError('OPENROUTER_API_KEY not set — semantic/architectural conflict detection skipped')
+  let resp: Response
   try {
-    const resp = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
+    resp = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${key}`,
@@ -34,12 +42,15 @@ async function openRouterChat(prompt: string, maxTokens = 150): Promise<string> 
       }),
       signal: AbortSignal.timeout(10_000),
     })
-    if (!resp.ok) return ''
-    const data = await resp.json() as any
-    return data.choices?.[0]?.message?.content?.trim() ?? ''
-  } catch {
-    return ''
+  } catch (err: any) {
+    const cause = err?.name === 'AbortError' ? 'timeout' : err?.message ?? 'unknown'
+    throw new OpenRouterError(`network failure: ${cause}`, cause)
   }
+  if (!resp.ok) {
+    throw new OpenRouterError(`HTTP ${resp.status}: ${resp.statusText}`)
+  }
+  const data = await resp.json() as any
+  return data.choices?.[0]?.message?.content?.trim() ?? ''
 }
 
 export async function detectConflicts(newIntent: IntentRecord): Promise<ConflictResult[]> {
@@ -68,7 +79,7 @@ export async function detectConflicts(newIntent: IntentRecord): Promise<Conflict
 
   // Step 2 — semantic: use OpenRouter owl-alpha
   const semanticCandidates = overlappingIntents.filter(i => !fileConflicts.includes(i))
-  const semanticChecks = await Promise.all(
+  const semanticChecks = await Promise.allSettled(
     semanticCandidates.map(async (candidate) => {
       const answer = await openRouterChat(
         `Do these two coding agent intents semantically conflict? Answer YES or NO only.\n` +
@@ -80,7 +91,13 @@ export async function detectConflicts(newIntent: IntentRecord): Promise<Conflict
     })
   )
 
-  for (const candidate of semanticChecks.filter(Boolean)) {
+  for (const result of semanticChecks) {
+    if (result.status === 'rejected') {
+      console.error(`[conflict-detector] semantic check failed:`, (result.reason as any)?.message || result.reason)
+      continue
+    }
+    const candidate = result.value
+    if (!candidate) continue
     conflicts.push({
       id: `conflict-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       severity: 'warning',
@@ -120,7 +137,9 @@ export async function detectConflicts(newIntent: IntentRecord): Promise<Conflict
           })
         }
       }
-    } catch { /* architectural check is non-fatal */ }
+    } catch (err: any) {
+      console.error(`[conflict-detector] architectural check failed:`, err?.message || err)
+    }
   }
 
   return conflicts

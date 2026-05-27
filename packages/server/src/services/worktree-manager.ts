@@ -36,8 +36,21 @@ export async function getWorktreeDiff(agentId: string, projectRoot: string): Pro
   const worktreeGit = simpleGit(wtPath)
 
   await worktreeGit.add('.')
-  const diff = await worktreeGit.diff(['--cached', 'HEAD'])
-  await worktreeGit.reset(['HEAD'])
+  let diff = ''
+  let resetFailed = false
+  try {
+    diff = await worktreeGit.diff(['--cached', 'HEAD'])
+  } finally {
+    try {
+      await worktreeGit.reset(['HEAD'])
+    } catch (resetErr: any) {
+      resetFailed = true
+      console.error(`[worktree] git reset HEAD failed for ${agentId}:`, resetErr?.message || resetErr)
+    }
+  }
+  if (resetFailed) {
+    throw new Error(`getWorktreeDiff for ${agentId} staged files but failed to unstage them. Worktree at ${wtPath} may need manual cleanup.`)
+  }
   return diff
 }
 
@@ -61,7 +74,18 @@ export async function mergeWorktree(
     await worktreeGit.commit(commitMessage)
   }
 
-  await git.merge([branchName, '--no-ff', '-m', `merge: ${commitMessage}`])
+  try {
+    await git.merge([branchName, '--no-ff', '-m', `merge: ${commitMessage}`])
+  } catch (mergeErr: any) {
+    console.error(`[worktree] merge failed for ${agentId}, attempting abort:`, mergeErr?.message || mergeErr)
+    try {
+      await git.raw(['merge', '--abort']).catch((abortErr: any) => {
+        console.error(`[worktree] merge --abort failed for ${agentId}:`, abortErr?.message || abortErr)
+      })
+    } catch { /* best effort */ }
+    throw new Error(`Merge conflict for ${agentId} (branch ${branchName}). The repo merge was aborted. ${mergeErr?.message || mergeErr}`)
+  }
+
   await deleteWorktree(agentId, projectRoot)
 }
 
@@ -75,10 +99,16 @@ export async function deleteWorktree(agentId: string, projectRoot: string): Prom
     branchName = (await worktreeGit.revparse(['--abbrev-ref', 'HEAD'])).trim()
   } catch { /* worktree may already be removed */ }
 
-  await git.raw(['worktree', 'unlock', wtPath]).catch(() => {})
-  await git.raw(['worktree', 'remove', '--force', wtPath]).catch(() => {})
+  await git.raw(['worktree', 'unlock', wtPath]).catch((err: any) => {
+    console.error(`[worktree] unlock failed for ${agentId}:`, err?.message || err)
+  })
+  await git.raw(['worktree', 'remove', '--force', wtPath]).catch((err: any) => {
+    console.error(`[worktree] remove failed for ${agentId}:`, err?.message || err)
+  })
 
   if (branchName && branchName !== 'HEAD') {
-    await git.raw(['branch', '-D', branchName]).catch(() => {})
+    await git.raw(['branch', '-D', branchName]).catch((err: any) => {
+      console.error(`[worktree] branch delete failed for ${agentId} (${branchName}):`, err?.message || err)
+    })
   }
 }

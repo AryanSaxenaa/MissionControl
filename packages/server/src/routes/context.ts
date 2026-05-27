@@ -24,7 +24,9 @@ export default async function contextRoutes(fastify: FastifyInstance) {
 
     getGraphData(recentDecisions, recentFailures).then(data => {
       broadcast({ type: 'graph:snapshot', ...data } as any)
-    }).catch(() => {})
+    }).catch((err: any) => {
+      console.error('[context] graph snapshot broadcast failed:', err?.message || err)
+    })
 
     return { sourceId, relatedContext: '' }
   })

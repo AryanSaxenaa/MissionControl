@@ -7,9 +7,9 @@ export function startHealthMonitor() {
   setInterval(() => {
     const now = Date.now()
     for (const [id, agent] of agents) {
-      // PTY agents never send heartbeats — skip if their process is still alive
+      if (agent.status !== 'active') continue
       if (ptyInstances.has(id)) continue
-      if (agent.status === 'active' && now - agent.lastHeartbeat > 30000) {
+      if (now - agent.lastHeartbeat > 30000) {
         agents.set(id, { ...agent, status: 'failed' })
         broadcast({ type: 'agent:died', agentId: id })
       }
