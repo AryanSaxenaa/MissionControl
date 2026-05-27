@@ -65,15 +65,18 @@ function pathsOverlapExactOrPrefix(a: string, b: string): boolean {
 }
 
 function pathsOverlapTailMatch(a: string, b: string): boolean {
-  const tailA = a.split('/').slice(-2).join('/')
-  const tailB = b.split('/').slice(-2).join('/')
-  return Boolean(tailA && tailA === tailB)
+  return a.endsWith('/' + b) || b.endsWith('/' + a)
 }
 
 function pathsOverlapGlob(a: string, b: string): boolean {
   const escapeRegex = (s: string) => s.replace(/[.+^${}()|[\]\\]/g, '\\$&')
-  const globToRegex = (g: string) =>
-    new RegExp('^' + escapeRegex(g).replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '(/.*)?$')
+  const globToRegex = (g: string) => {
+    const escaped = escapeRegex(g)
+    const regexStr = escaped.replace(/\*+/g, (match) => {
+      return match.length >= 2 ? '.*' : '[^/]*'
+    })
+    return new RegExp('^' + regexStr + '(/.*)?$')
+  }
 
   if (a.includes('*')) return globToRegex(a).test(b)
   if (b.includes('*')) return globToRegex(b).test(a)

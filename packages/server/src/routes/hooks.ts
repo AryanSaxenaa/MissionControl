@@ -246,7 +246,7 @@ export async function hooksRoutes(app: FastifyInstance) {
       pendingPermissions.set(requestId, resolve)
       setTimeout(() => {
         pendingPermissions.delete(requestId)
-        resolve('allow')
+        resolve('deny')
       }, 300_000)
     })
 
