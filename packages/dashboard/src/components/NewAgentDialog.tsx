@@ -110,7 +110,7 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
             <p className="text-[#444] text-xs mt-1">Absolute path to the project the AI will work in</p>
           </div>
 
-          {/* Task description — per spec §3, user enters this */}
+          {/* Task description */}
           <div>
             <label className="block text-xs text-[#666] uppercase tracking-widest mb-2">
               Task

@@ -87,7 +87,7 @@ export async function installHooks(
       JSON.stringify(config, null, 2)
     )
 
-    // Spec §6: Auto-install @missioncontrol/opencode-plugin into worktree.
+    // Auto-install @missioncontrol/opencode-plugin into worktree.
     // Without this, opencode.json references a package not in node_modules.
     // Uses file: protocol relative path from worktree to monorepo's plugin package
     // so it works without publishing to npm.

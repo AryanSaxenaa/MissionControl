@@ -2,14 +2,9 @@ import { simpleGit } from 'simple-git'
 import path from 'path'
 
 /**
- * Spec §3, Non-Negotiable #4:
- * "Git worktree created before agent spawns. Agent never runs in the main working tree."
- *
  * Every agent gets an isolated git worktree branched off the USER'S PROJECT repo.
- * The projectRoot parameter is the absolute path to the user's project (the git repo
- * they want the agent to work on). Worktrees are created inside projectRoot/.trees/.
- *
- * There is ONE mode. No "Mode A / Mode B". Always a worktree.
+ * The projectRoot parameter is the absolute path to the user's project.
+ * Worktrees are created inside projectRoot/.trees/.
  */
 
 function getRepoGit(projectRoot: string) {

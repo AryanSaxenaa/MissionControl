@@ -1,6 +1,6 @@
 // @missioncontrol/opencode-plugin
 // OpenCode plugin that integrates with MissionControl server.
-// Non-Negotiable #10: import type from @opencode-ai/plugin (NOT 'opencode-ai').
+// Must import type from @opencode-ai/plugin (NOT 'opencode-ai').
 //
 // NOTE: The @opencode-ai/plugin Hooks interface changed in v1.15.x — it no longer
 // exposes tool.execute.before/after or permission.ask as typed hook keys.
@@ -25,7 +25,7 @@ export const MissionControlPlugin = async ({ project }: PluginInput): Promise<an
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ agentId, session_id: project.id }),
-  }).catch(() => {})
+  }).catch((e) => console.error('[MissionControl Plugin] Network error:', e.message))
 
   return {
     hooks: {
@@ -61,7 +61,7 @@ export const MissionControlPlugin = async ({ project }: PluginInput): Promise<an
             tool_output: output,
             session_id: project.id,
           }),
-        }).catch(() => {})
+        }).catch((e) => console.error('[MissionControl Plugin] Network error:', e.message))
       },
 
       // event is 'permission.ask', NOT 'permission.asked'
@@ -84,7 +84,7 @@ export const MissionControlPlugin = async ({ project }: PluginInput): Promise<an
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_id: project.id, agentId }),
-        }).catch(() => {})
+        }).catch((e) => console.error('[MissionControl Plugin] Network error:', e.message))
       },
     },
   }

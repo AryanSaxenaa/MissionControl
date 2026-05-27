@@ -1,13 +1,9 @@
 /**
- * Conflict detector — three-step pipeline per spec §10.
+ * Conflict detector pipeline:
  *
  * Step 1 (file): in-memory, synchronous.
- * Step 2 (semantic): uses OpenRouter owl-alpha instead of Anthropic.
- *                    owl-alpha is reasoning-optimised and free of Anthropic dependency.
- *                    Falls back gracefully if OPENROUTER_API_KEY is absent.
+ * Step 2 (semantic): OpenRouter owl-alpha.
  * Step 3 (architectural): HydraDB recall + OpenRouter owl-alpha.
- *                         HydraDB already has graph-enriched decision memory —
- *                         there is no valid reason to use a separate LLM API for this.
  */
 
 import { IntentRecord, activeIntents, getIntentsForTarget, pathsOverlap } from '../state.js'
@@ -70,7 +66,7 @@ export async function detectConflicts(newIntent: IntentRecord): Promise<Conflict
     })
   }
 
-  // Step 2 — semantic: use OpenRouter owl-alpha (replaces Anthropic)
+  // Step 2 — semantic: use OpenRouter owl-alpha
   const semanticCandidates = overlappingIntents.filter(i => !fileConflicts.includes(i))
   const semanticChecks = await Promise.all(
     semanticCandidates.map(async (candidate) => {

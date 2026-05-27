@@ -68,15 +68,12 @@ fastify.get('/api/server-info', async () => ({
 }))
 
 fastify.get('/api/memory/stats', async (req, reply) => {
-  try {
-    const sources = await listSources()
-    const items = (sources as any).sources ?? (sources as any).items ?? []
-    return {
-      totalSources: items.length,
-      subTenants: [...new Set(items.map((s: any) => s.sub_tenant_id ?? 'shared'))],
-    }
-  } catch {
-    return { totalSources: 0, subTenants: [] }
+  const sources = await listSources()
+  const items = (sources as any).sources ?? (sources as any).items ?? []
+
+  return {
+    totalSources: items.length,
+    subTenants: [...new Set(items.map((s: any) => s.sub_tenant_id ?? 'shared'))],
   }
 })
 

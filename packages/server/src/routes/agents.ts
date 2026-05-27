@@ -53,24 +53,20 @@ async function injectBrainContext(
   const sections: string[] = []
 
   if (task.trim()) {
-    try {
-      const [shared, decisions] = await Promise.all([
-        recallContext(task, SUB_TENANTS.SHARED),
-        recallContext(task, SUB_TENANTS.DECISIONS),
-      ])
-      const sharedText    = shared.chunks?.map((c: any) => c.chunk_content).join('\n---\n') ?? ''
-      const decisionsText = decisions.chunks?.map((c: any) => c.chunk_content).join('\n---\n') ?? ''
-      if (sharedText.trim())    sections.push(`=== SHARED CONTEXT ===\n${sharedText}`)
-      if (decisionsText.trim()) sections.push(`=== PRIOR DECISIONS ===\n${decisionsText}`)
-    } catch { /* non-fatal — HydraDB may be empty on first run */ }
+    const [shared, decisions] = await Promise.all([
+      recallContext(task, SUB_TENANTS.SHARED),
+      recallContext(task, SUB_TENANTS.DECISIONS),
+    ])
+    const sharedText    = shared.chunks?.map((c: any) => c.chunk_content).join('\n---\n') ?? ''
+    const decisionsText = decisions.chunks?.map((c: any) => c.chunk_content).join('\n---\n') ?? ''
+    if (sharedText.trim())    sections.push(`=== SHARED CONTEXT ===\n${sharedText}`)
+    if (decisionsText.trim()) sections.push(`=== PRIOR DECISIONS ===\n${decisionsText}`)
   }
 
   if (parentAgentId) {
-    try {
-      const parent     = await recallParentContext(parentAgentId)
-      const parentText = parent.chunks?.slice(0, 20).map((c: any) => c.chunk_content).join('\n---\n') ?? ''
-      if (parentText.trim()) sections.push(`=== PARENT AGENT CONTEXT (${parentAgentId}) ===\n${parentText}`)
-    } catch { /* non-fatal */ }
+    const parent     = await recallParentContext(parentAgentId)
+    const parentText = parent.chunks?.slice(0, 20).map((c: any) => c.chunk_content).join('\n---\n') ?? ''
+    if (parentText.trim()) sections.push(`=== PARENT AGENT CONTEXT (${parentAgentId}) ===\n${parentText}`)
   }
 
   if (sections.length === 0) return

@@ -1,6 +1,6 @@
 /**
  * HealthRing — animated status indicator for an agent.
- * Spec §2 lists this as a required component; §8.2 references <HealthRing status={status} />.
+
  */
 
 interface HealthRingProps {
