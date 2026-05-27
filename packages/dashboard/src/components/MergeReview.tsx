@@ -21,9 +21,9 @@ export function MergeReview({ agentId, onClose }: MergeReviewProps) {
 
   useEffect(() => {
     fetch(`/api/agents/${agentId}/diff`)
-      .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then(setData)
-      .catch(() => {})
+      .catch(() => setError('Failed to fetch diff — server may be unreachable'))
   }, [agentId])
 
   const merge = async () => {

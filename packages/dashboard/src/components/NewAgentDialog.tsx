@@ -48,14 +48,15 @@ export function NewAgentDialog({ onClose, onSpawned }: NewAgentDialogProps) {
       })
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({}))
-        setError((body as any).error ?? 'Spawn failed')
+        const msg = (body as any).error ?? 'Spawn failed'
+        setError(msg)
         return
       }
       const data = await resp.json()
       onSpawned(data.agentId, data.assignedPort)
       onClose()
     } catch (e: any) {
-      setError(e.message ?? 'Network error')
+      setError(`Cannot reach server — ${e.message ?? 'network error'}`)
     } finally {
       setLoading(false)
     }

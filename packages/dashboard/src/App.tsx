@@ -1,6 +1,7 @@
 import { useEventSocket } from './hooks/useEventSocket'
 import { useMissionControlStore } from './store/useStore'
 import { PermissionModal } from './components/PermissionModal'
+import { ErrorToast } from './components/ErrorToast'
 import AgentFleet from './views/AgentFleet'
 import ContextGraph from './views/ContextGraph'
 import DecisionLog from './views/DecisionLog'
@@ -43,15 +44,17 @@ export default function App() {
   const setView           = useMissionControlStore(s => s.setView)
   const pendingPermissions      = useMissionControlStore(s => s.pendingPermissions)
   const removePermissionRequest = useMissionControlStore(s => s.removePermissionRequest)
+  const addError                = useMissionControlStore(s => s.addError)
 
   const agents    = [...agentsMap.values()]
   const active    = agents.filter(a => a.status === 'active').length
   const conflicts = activeConflicts.length
 
-  // HydraDB memory node count — polled every 30s, shown in status bar
   const [memoryNodes, setMemoryNodes] = useState<number>(0)
   useEffect(() => {
-    const poll = () => fetch('/api/memory/stats').then(r => r.json()).then(d => setMemoryNodes(d.totalSources ?? 0)).catch(() => {})
+    const poll = () => fetch('/api/memory/stats').then(r => r.json()).then(d => setMemoryNodes(d.totalSources ?? 0)).catch(() => {
+      addError('Cannot reach HydraDB for memory stats — check server and tenant configuration')
+    })
     poll()
     const id = setInterval(poll, 30_000)
     return () => clearInterval(id)
@@ -158,6 +161,8 @@ export default function App() {
           onResolve={() => removePermissionRequest(topPermission.requestId)}
         />
       )}
+
+      <ErrorToast />
     </div>
   )
 }

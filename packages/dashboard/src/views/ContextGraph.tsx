@@ -10,9 +10,9 @@ interface MemoryEntry {
 }
 
 const SUB_TENANT_COLORS: Record<string, string> = {
-  shared:    '#f97316',  // orange — context writes
-  decisions: '#3b82f6',  // blue — decisions
-  failures:  '#ef4444',  // red — failures
+  shared:    '#f97316',
+  decisions: '#3b82f6',
+  failures:  '#ef4444',
 }
 
 function tenantColor(tenant: string): string {
@@ -22,22 +22,25 @@ function tenantColor(tenant: string): string {
 export default function ContextGraph() {
   const data              = useMissionControlStore(s => s.graphData)
   const lastContextIngest = useMissionControlStore(s => s.lastContextIngest)
+  const addError          = useMissionControlStore(s => s.addError)
   const svgRef = useRef<SVGSVGElement>(null)
   const [entries, setEntries] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(false)
+  const [fetchFailed, setFetchFailed] = useState(false)
 
-  // Fetch actual HydraDB source metadata for the sidebar list.
-  // Re-fetches when lastContextIngest increments (i.e. after any agent write).
   useEffect(() => {
     setLoading(true)
+    setFetchFailed(false)
     fetch('/api/graph')
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then(g => {
         const sources: MemoryEntry[] = (g.sources ?? []).slice(0, 100)
         setEntries(sources)
       })
       .catch((e) => {
         console.error('[ContextGraph] /api/graph failed:', e)
+        setFetchFailed(true)
+        addError(`HydraDB graph fetch failed — ${(e as Error).message || 'server unreachable'}`)
       })
       .finally(() => setLoading(false))
   }, [lastContextIngest])
@@ -154,7 +157,7 @@ export default function ContextGraph() {
           {!data && entries.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-[#555] text-xs uppercase tracking-widest">
-                {loading ? 'Loading HydraDB graph...' : 'No memory yet — spawn an agent to start'}
+                {fetchFailed ? 'HydraDB unreachable — check server logs' : loading ? 'Loading HydraDB graph...' : 'No memory yet — spawn an agent to start'}
               </span>
             </div>
           ) : null}

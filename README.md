@@ -30,8 +30,10 @@ Each agent gets its own `git worktree` on a fresh branch at `yourproject/.trees/
 **Three-step conflict prevention**
 Before every tool call, MissionControl runs:
 1. **File conflict** — two agents writing the same file. Detected in-memory, no network call. Blocked immediately.
-2. **Semantic conflict** — two agents' intents contradict each other across different files. OpenRouter `owl-alpha` checks, advisory warning.
-3. **Architectural conflict** — current intent contradicts past decisions stored in HydraDB. Checked against the knowledge graph, advisory warning.
+2. **Semantic conflict** — two agents' intents contradict each other across different files. Uses OpenRouter to check, advisory warning. *Requires `OPENROUTER_API_KEY`.*
+3. **Architectural conflict** — current intent contradicts past decisions stored in HydraDB. Checked against the knowledge graph via OpenRouter, advisory warning. *Requires `OPENROUTER_API_KEY`.*
+
+> Without `OPENROUTER_API_KEY`, only step 1 (file-level conflict detection) is active. Steps 2 and 3 are silently skipped.
 
 **Shared brain via HydraDB**
 Before a new agent starts, MissionControl queries HydraDB and writes a `.mc_context` file into its worktree: relevant prior context, architectural decisions, and recorded failures from every agent that came before. During the session, every file write is automatically ingested — no agent instrumentation required.
@@ -128,7 +130,7 @@ Two WebSocket channels run on the same HTTP server:
   - Claude Code: `npm install -g @anthropic-ai/claude-code`
   - Codex: `npm install -g @openai/codex`
   - OpenCode: `npm install -g opencode-ai`
-- **OpenRouter API key** *(optional)* — enables semantic and architectural conflict detection. Without it, only file-level conflicts are caught. Get one at [openrouter.ai](https://openrouter.ai).
+- **OpenRouter API key** — enables semantic (step 2) and architectural (step 3) conflict detection. Without it, only file-level conflicts are caught. Get one at [openrouter.ai](https://openrouter.ai).
 
 ---
 
@@ -162,7 +164,8 @@ HYDRA_TENANT_ID=your-tenant-id
 HYDRADB_TENANT_ID=your-tenant-id
 HYDRADB_OUTPUT=human
 
-# OpenRouter — optional, enables semantic + architectural conflict detection
+# OpenRouter — enables semantic + architectural conflict detection (steps 2 & 3)
+# Without this key, conflict detection is limited to file-level only (step 1)
 OPENROUTER_API_KEY=sk-or-your-key
 
 # Server port

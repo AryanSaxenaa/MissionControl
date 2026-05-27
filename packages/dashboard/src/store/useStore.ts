@@ -56,6 +56,11 @@ interface MissionControlStore {
   lastContextIngest: number
   bumpContextIngest: () => void
 
+  // Errors
+  errors: Array<{ id: string; message: string; timestamp: number }>
+  addError: (message: string) => void
+  dismissError: (id: string) => void
+
   // UI
   activeView: 'fleet' | 'graph' | 'decisions' | 'conflicts' | 'failures'
   setView: (v: MissionControlStore['activeView']) => void
@@ -171,6 +176,14 @@ export const useMissionControlStore = create<MissionControlStore>((set, get) => 
 
   activeView: 'fleet',
   setView: (v) => set({ activeView: v }),
+  errors: [],
+  addError: (message) => {
+    const id = `err-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    set((s) => ({ errors: [...s.errors.slice(-19), { id, message, timestamp: Date.now() }] }))
+    setTimeout(() => get().dismissError(id), 8000)
+  },
+  dismissError: (id) => set((s) => ({ errors: s.errors.filter((e) => e.id !== id) })),
+
   selectedNodeId: null,
   setSelectedNode: (id) => set({ selectedNodeId: id }),
 }))
