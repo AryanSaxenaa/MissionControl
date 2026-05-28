@@ -100,7 +100,6 @@ export async function hooksRoutes(app: FastifyInstance) {
       startedAt: Date.now(),
     }
     activeIntents.set(intentId, intent)
-    broadcast({ type: 'intent:declared', intent })
 
     let conflicts: ConflictResult[] = []
     try {
@@ -121,6 +120,8 @@ export async function hooksRoutes(app: FastifyInstance) {
         },
       })
     }
+
+    broadcast({ type: 'intent:declared', intent })
 
     sessionIntents.set(session_id, intentId)
 

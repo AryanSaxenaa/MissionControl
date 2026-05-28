@@ -32,7 +32,7 @@ export const MissionControlPlugin = async ({ project }: PluginInput): Promise<an
       'tool.execute.before': async ({ tool, input }: { tool: string; input: any }) => {
         if (!WRITE_TOOLS.includes(tool.toLowerCase())) return
 
-        const resp = await fetch(`${serverUrl}/hooks/pre-tool-use`, {
+        const resp = await fetch(`${serverUrl}/hooks/pre-tool-use?agentId=${agentId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -52,7 +52,7 @@ export const MissionControlPlugin = async ({ project }: PluginInput): Promise<an
       'tool.execute.after': async ({ tool, input, output }: { tool: string; input: any; output: any }) => {
         if (!WRITE_TOOLS.includes(tool.toLowerCase())) return
 
-        await fetch(`${serverUrl}/hooks/post-tool-use`, {
+        await fetch(`${serverUrl}/hooks/post-tool-use?agentId=${agentId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -66,7 +66,7 @@ export const MissionControlPlugin = async ({ project }: PluginInput): Promise<an
 
       // event is 'permission.ask', NOT 'permission.asked'
       'permission.ask': async ({ tool, input }: { tool: string; input: any; requestId?: string }) => {
-        const resp = await fetch(`${serverUrl}/hooks/permission-request`, {
+        const resp = await fetch(`${serverUrl}/hooks/permission-request?agentId=${agentId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

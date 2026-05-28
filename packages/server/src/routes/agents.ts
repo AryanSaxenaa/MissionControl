@@ -221,10 +221,14 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     const agent = agents.get(id)
     if (!agent) return reply.status(404).send({ error: 'Agent not found' })
 
-    agent.status = body.status
-    agent.currentTask = body.currentTask
-    agent.lastHeartbeat = Date.now()
-    agent.contextRichness = await computeContextRichness(id)
+    const updated: typeof agent = {
+      ...agent,
+      status: body.status,
+      currentTask: body.currentTask,
+      lastHeartbeat: Date.now(),
+      contextRichness: await computeContextRichness(id),
+    }
+    agents.set(id, updated)
 
     broadcast({ type: 'agent:heartbeat', agentId: id, status: body.status, task: body.currentTask })
     return { ok: true }

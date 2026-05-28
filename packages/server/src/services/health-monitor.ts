@@ -4,7 +4,7 @@ import { agents } from '../state.js'
 import { ptyInstances } from './pty-spawner.js'
 
 export function startHealthMonitor() {
-  setInterval(() => {
+  const interval = setInterval(() => {
     const now = Date.now()
     for (const [id, agent] of agents) {
       if (agent.status !== 'active') continue
@@ -15,4 +15,5 @@ export function startHealthMonitor() {
       }
     }
   }, 5000)
+  if (interval.unref) interval.unref()
 }

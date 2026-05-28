@@ -23,8 +23,9 @@ export async function mergeRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string }
     const agent = agents.get(id)
     if (!agent) return reply.code(404).send({ error: 'agent not found' })
+    if (!agent.projectPath) return reply.code(400).send({ error: 'agent has no projectPath' })
 
-    const projectRoot = agent.projectPath!
+    const projectRoot = agent.projectPath
 
     const [diff, context] = await Promise.all([
       getWorktreeDiff(id, projectRoot).catch(() => ''),
@@ -44,6 +45,7 @@ export async function mergeRoutes(app: FastifyInstance) {
     const { commitMessage } = req.body as { commitMessage: string }
     const agent = agents.get(id)
     if (!agent) return reply.code(404).send({ error: 'agent not found' })
+    if (!agent.projectPath) return reply.code(400).send({ error: 'agent has no projectPath' })
 
     const result = await withMergeGuard(id, async () => {
       await mergeWorktree(id, commitMessage, agent.projectPath!)
@@ -57,6 +59,7 @@ export async function mergeRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string }
     const agent = agents.get(id)
     if (!agent) return reply.code(404).send({ error: 'agent not found' })
+    if (!agent.projectPath) return reply.code(400).send({ error: 'agent has no projectPath' })
 
     const result = await withMergeGuard(id, async () => {
       await deleteWorktree(id, agent.projectPath!)
