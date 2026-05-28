@@ -11,7 +11,7 @@ import type { PluginInput } from '@opencode-ai/plugin'
 
 const WRITE_TOOLS = ['write', 'edit', 'bash']
 
-export const MissionControlPlugin = async ({ project }: PluginInput): Promise<any> => {
+const MissionControlPlugin = async ({ project }: PluginInput): Promise<any> => {
   const serverUrl = process.env.MC_SERVER_URL!
   const agentId = process.env.MC_AGENT_ID!
 

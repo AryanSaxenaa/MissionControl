@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import type { HookPayload, ConflictResult } from '@missioncontrol/types'
 import { detectConflicts } from '../services/conflict-detector.js'
 import { broadcast } from '../ws-events.js'
-import { activeIntents, getIntentsForTarget, sessionToAgent, sessionIntents, clearSessionsForAgent } from '../state.js'
+import { activeIntents, getIntentsForTarget, sessionToAgent, sessionIntents } from '../state.js'
 import { recallFailuresForTarget, ingestContext, ingestDecision, ingestFailure } from '../hydra.js'
 import { trackConflict } from './conflicts.js'
 import { recentDecisions } from './decisions.js'
@@ -43,8 +43,6 @@ function makePeerAwarenessContext(
   }
   return { additionalContext, peerConflict }
 }
-
-export { clearSessionsForAgent }
 
 export async function hooksRoutes(app: FastifyInstance) {
 

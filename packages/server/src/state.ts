@@ -20,10 +20,6 @@ export function clearSessionsForAgent(agentId: string): void {
   }
 }
 
-export function getIntentsByAgent(agentId: string): IntentRecord[] {
-  return [...activeIntents.values()].filter(i => i.agentId === agentId)
-}
-
 export function getIntentsForTarget(target: string): IntentRecord[] {
   return [...activeIntents.values()].filter(
     i =>
@@ -34,7 +30,7 @@ export function getIntentsForTarget(target: string): IntentRecord[] {
 
 // Collapse backslashes (Windows) to forward slashes, lowercases drive letters,
 // and strips trailing slashes so cross-shell paths compare equally.
-export function normalizePathSeparators(p: string): string {
+function normalizePathSeparators(p: string): string {
   let s = p.replace(/\\/g, '/').replace(/\/+$/, '')
   return s.replace(/^([a-zA-Z]):\//, (_m, d) => d.toLowerCase() + ':/')
 }
@@ -45,11 +41,11 @@ export function normalizePathSeparators(p: string): string {
 //   <project>/.trees/agent-AAA/README.md
 //   <project>/.trees/agent-BBB/README.md
 // Both must normalize to <project>/README.md for conflict detection to fire.
-export function stripWorktreePrefix(p: string): string {
+function stripWorktreePrefix(p: string): string {
   return p.replace(/(^|.*?\/)\.trees\/[^/]+\/(.*)$/, '$1$2')
 }
 
-export function normalizeTarget(p: string): string {
+function normalizeTarget(p: string): string {
   return stripWorktreePrefix(normalizePathSeparators(p))
 }
 
@@ -83,7 +79,7 @@ function pathsOverlapGlob(a: string, b: string): boolean {
   return false
 }
 
-export function pathsOverlap(a: string, b: string): boolean {
+function pathsOverlap(a: string, b: string): boolean {
   const na = normalizeTarget(a)
   const nb = normalizeTarget(b)
 

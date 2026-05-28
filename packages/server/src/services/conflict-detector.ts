@@ -6,11 +6,11 @@
  * Step 3 (architectural): HydraDB recall + OpenRouter owl-alpha.
  */
 
-import { IntentRecord, activeIntents, getIntentsForTarget, pathsOverlap } from '../state.js'
+import { IntentRecord, activeIntents, getIntentsForTarget } from '../state.js'
 import { recallDecisionsForTarget, whyQuery } from '../hydra.js'
 import type { ConflictResult } from '@missioncontrol/types'
 
-export { ConflictResult, pathsOverlap }
+export type { ConflictResult }
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const OPENROUTER_MODEL = 'openrouter/owl-alpha'
