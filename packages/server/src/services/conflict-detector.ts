@@ -15,6 +15,10 @@ export { ConflictResult, pathsOverlap }
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const OPENROUTER_MODEL = 'openrouter/owl-alpha'
 
+interface OpenRouterResponse {
+  choices?: { message?: { content?: string } }[]
+}
+
 class OpenRouterError extends Error {
   constructor(message: string, public cause?: string) {
     super(`[OpenRouter] ${message}`)
@@ -49,7 +53,7 @@ async function openRouterChat(prompt: string, maxTokens = 150): Promise<string> 
   if (!resp.ok) {
     throw new OpenRouterError(`HTTP ${resp.status}: ${resp.statusText}`)
   }
-  const data = await resp.json() as any
+  const data = await resp.json() as OpenRouterResponse
   return data.choices?.[0]?.message?.content?.trim() ?? ''
 }
 

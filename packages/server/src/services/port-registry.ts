@@ -3,7 +3,6 @@ import fs from 'fs/promises'
 
 const PORT_START = 3100
 const PORT_MAX   = 49151
-const EPHEMERAL_START = 49152
 const portMap = new Map<string, number>()
 const usedPorts = new Set<number>()
 
@@ -11,7 +10,7 @@ export function assignPort(agentId: string): number {
   let port = PORT_START
   while (usedPorts.has(port) && port < PORT_MAX) port++
   if (port >= PORT_MAX) {
-    throw new Error(`port registry exhausted: reached ${PORT_MAX} (ephemeral range begins at ${EPHEMERAL_START}). Too many concurrent agents.`)
+    throw new Error(`port registry exhausted: reached ${PORT_MAX}. Too many concurrent agents.`)
   }
   portMap.set(agentId, port)
   usedPorts.add(port)

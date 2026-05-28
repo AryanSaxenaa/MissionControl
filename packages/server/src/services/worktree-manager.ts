@@ -77,12 +77,9 @@ export async function mergeWorktree(
   try {
     await git.merge([branchName, '--no-ff', '-m', `merge: ${commitMessage}`])
   } catch (mergeErr: any) {
-    console.error(`[worktree] merge failed for ${agentId}, attempting abort:`, mergeErr?.message || mergeErr)
-    try {
-      await git.raw(['merge', '--abort']).catch((abortErr: any) => {
-        console.error(`[worktree] merge --abort failed for ${agentId}:`, abortErr?.message || abortErr)
-      })
-    } catch { /* best effort */ }
+    await git.raw(['merge', '--abort']).catch((abortErr: any) => {
+      console.error(`[worktree] merge --abort failed for ${agentId}:`, abortErr?.message || abortErr)
+    })
     throw new Error(`Merge conflict for ${agentId} (branch ${branchName}). The repo merge was aborted. ${mergeErr?.message || mergeErr}`)
   }
 

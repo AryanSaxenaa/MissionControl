@@ -93,21 +93,20 @@ export async function installHooks(
     // so it works without publishing to npm.
     const pluginPkgPath = path.join(MONOREPO_ROOT, 'packages', 'opencode-plugin')
     const relativePluginPath = path.relative(worktreePath, pluginPkgPath)
-    try {
-      await execAsync(`npm install "${relativePluginPath}"`, { cwd: worktreePath })
-    } catch (firstErr: any) {
-      console.warn(`[hooks] npm install failed for ${agentId}, trying pnpm:`, firstErr?.message || firstErr)
+    const packageManagers = [
+      { name: 'npm',  cmd: (p: string) => `npm install "${p}"` },
+      { name: 'pnpm', cmd: (p: string) => `pnpm add "${p}"` },
+      { name: 'yarn', cmd: (p: string) => `yarn add "file:${p}"` },
+    ]
+    for (const pm of packageManagers) {
       try {
-        await execAsync(`pnpm add "${relativePluginPath}"`, { cwd: worktreePath })
-      } catch (pnpmErr: any) {
-        console.warn(`[hooks] pnpm install also failed for ${agentId}, trying yarn:`, pnpmErr?.message || pnpmErr)
-        try {
-          await execAsync(`yarn add "file:${relativePluginPath}"`, { cwd: worktreePath })
-        } catch (yarnErr: any) {
-          console.error(`[hooks] all package managers failed for ${agentId}. opencode plugin will not be available. yarn error:`, yarnErr?.message || yarnErr)
-        }
+        await execAsync(pm.cmd(relativePluginPath), { cwd: worktreePath })
+        return
+      } catch (err: any) {
+        console.warn(`[hooks] ${pm.name} install failed for ${agentId}:`, err?.message || err)
       }
     }
+    console.error(`[hooks] all package managers failed for ${agentId}. opencode plugin will not be available.`)
   } else if (kind === 'custom') {
     // Custom kind = generic shell. We don't know which CLI the user will run.
     // Install configs for all three known agents so whichever one they invoke

@@ -15,21 +15,7 @@ const RING_COLORS: Record<string, { fill: string; ring: string; pulse: boolean }
   completed: { fill: '#22c55e', ring: 'rgba(34,197,94,0.2)',   pulse: false },
 }
 
-let injected = false
-
 export function HealthRing({ status, size = 20 }: HealthRingProps) {
-  if (!injected) {
-    injected = true
-    const style = document.createElement('style')
-    style.textContent = `
-      @keyframes mc-pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50%       { opacity: 0.5; transform: scale(1.3); }
-      }
-    `
-    document.head.appendChild(style)
-  }
-
   const colors = RING_COLORS[status] ?? { fill: '#555', ring: 'rgba(85,85,85,0.2)', pulse: false }
   const r = size / 2
 
@@ -55,6 +41,12 @@ export function HealthRing({ status, size = 20 }: HealthRingProps) {
           background: colors.fill,
         }}
       />
+      <style>{`
+        @keyframes mc-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.5; transform: scale(1.3); }
+        }
+      `}</style>
     </div>
   )
 }
